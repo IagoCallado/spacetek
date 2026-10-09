@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SpaceTek | Impressão 3D sob demanda</title>
+  <meta name="description" content="SpaceTek — catálogo de impressões 3D sob demanda. Escolha suas peças e solicite um orçamento pelo WhatsApp." />
+  <meta property="og:title" content="SpaceTek | Impressão 3D" />
+  <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href="assets/images/logo.jpg" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
+  <script src="data/products.js"></script>
+
+  <!-- React via CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Aplicacao (JSX inline para funcionar em file:// sem servidor) -->
+  <script type="text/babel" data-presets="react">
+    const h = React.createElement;
+
+    /* ---------- Utilidades ---------- */
+    function irPara(id) {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    /* ---------- Icones ---------- */
+    function CartIcon(props) {
+      return h("svg", { width: 22, height: 22, viewBox: "0 0 24 24", fill: "none",
+        stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", ...props },
+        h("circle", { cx: 9, cy: 21, r: 1 }),
+        h("circle", { cx: 20, cy: 21, r: 1 }),
+        h("path", { d: "M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" })
+      );
+    }
+
+    function WhatsAppIcon(props) {
+      return h("svg", { width: 30, height: 30, viewBox: "0 0 24 24", fill: "#fff", ...props },
+        h("path", { d: "M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413" })
+      );
+    }
+
+    /* ---------- Header ---------- */
+    function Header({ cartCount, onOpenCart, onInicio, onVerTodos, onQuemSomos }) {
+      const [logoOk, setLogoOk] = React.useState(true);
+      return h("header", { className: "header" },
+        h("div", { className: "header__inner" },
+          h("a", { className: "brand", href: "#inicio", onClick: (e) => { e.preventDefault(); onInicio(); } },
+            logoOk
+              ? h("img", { className: "brand__logo", src: "assets/images/logo.jpg", alt: "SpaceTek",
+                  onError: () => setLogoOk(false) })
+              : h("span", { className: "brand__fallback" }, "Space", h("span", null, "Tek"))
+          ),
+          h("nav", { className: "nav", "aria-label": "Navegação principal" },
+            h("button", { className: "nav__link", onClick: onInicio }, "Início"),
+            h("button", { className: "nav__link", onClick: onVerTodos }, "Ver todos os produtos"),
+            h("button", { className: "nav__link", onClick: onQuemSomos }, "Quem somos"),
+            h("button", { className: "nav__cart", onClick: onOpenCart, "aria-label": "Sacola de compras" },
+              h(CartIcon, null),
+              cartCount > 0 && h("span", { className: "nav__badge" }, cartCount)
+            )
+          )
+        )
+      );
+    }
+
+    /* ---------- Card de produto ---------- */
+    function ProductCard({ produto, onAdd, qtd }) {
+      return h("article", { className: "card" },
+        h("div", { className: "card__media" },
+          produto.novo && h("span", { className: "card__badge" }, "Novo"),
+          h("img", { src: produto.imagem, alt: produto.nome, loading: "lazy" })
+        ),
+        h("div", { className: "card__body" },
+          h("h3", { className: "card__title" }, produto.nome),
+          h("p", { className: "card__cat" }, produto.categoria),
+          h("button", { className: "btn btn--primary card__add", onClick: () => onAdd(produto) }, "Adicionar"),
+          qtd > 0 && h("span", { className: "card__qtd" }, "No carrinho: " + qtd)
+        )
+      );
+    }
+
+    /* ---------- Catalogo geral ---------- */
+    function Catalog({ produtos, onAdd, cart, showAll, onToggleAll }) {
+      const VISIVEL = 6;
+      const lista = showAll ? produtos : produtos.slice(0, VISIVEL);
+      return h("section", { id: "catalogo", className: "section" },
+        h("div", { className: "section__head" },
+          h("div", null,
+            h("h2", { className: "section__title" }, "Catálogo de Impressões"),
+            h("p", { className: "section__sub" }, "Peças sob demanda — escolha e monte seu orçamento.")
+          )
+        ),
+        h("div", { className: "grid" },
+          lista.map((p) => h(ProductCard, { key: p.id, produto: p, onAdd: onAdd,
+            qtd: cart[p.id] ? cart[p.id].qtd : 0 }))
+        ),
+        produtos.length > VISIVEL && h("div", { className: "section__more" },
+          h("button", { className: "btn btn--ghost", onClick: onToggleAll },
+            showAll ? "Ver menos" : "Ver mais")
+        )
+      );
+    }
+
+    /* ---------- Lancamentos (carrossel) ---------- */
+    function Lancamentos({ produtos, onAdd, cart }) {
+      const ref = React.useRef(null);
+      const rolar = (dir) => {
+        const el = ref.current;
+        if (!el) return;
+        const passo = Math.max(280, el.clientWidth * 0.8);
+        el.scrollBy({ left: dir * passo, behavior: "smooth" });
+      };
+      return h("section", { id: "lancamentos", className: "section section--alt" },
+        h("div", { className: "section__head" },
+          h("div", null,
+            h("h2", { className: "section__title" }, "Lançamentos"),
+            h("p", { className: "section__sub" }, "As novidades mais recentes do nosso ateliê.")
+          ),
+          h("div", { className: "carousel__nav" },
+            h("button", { className: "carousel__btn", onClick: () => rolar(-1), "aria-label": "Anterior" }, "‹"),
+            h("button", { className: "carousel__btn", onClick: () => rolar(1), "aria-label": "Próximo" }, "›")
+          )
+        ),
+        h("div", { className: "carousel", ref: ref },
+          produtos.map((p) => h("div", { className: "carousel__item", key: p.id },
+            h(ProductCard, { produto: p, onAdd: onAdd, qtd: cart[p.id] ? cart[p.id].qtd : 0 })
+          ))
+        )
+      );
+    }
+
+    /* ---------- Formulario de orcamento ---------- */
+    function QuoteForm({ items, onBack }) {
+      const [nome, setNome] = React.useState("");
+      const [cep, setCep] = React.useState("");
+      const [endereco, setEndereco] = React.useState("");
+      const [contato, setContato] = React.useState("");
+      const [obs, setObs] = React.useState("");
+      const [erro, setErro] = React.useState("");
+      const [copiado, setCopiado] = React.useState(false);
+      const [cepStatus, setCepStatus] = React.useState("idle");
+      const [cepMsg, setCepMsg] = React.useState("");
+      const [cepValidado, setCepValidado] = React.useState(false);
+      const cepTimer = React.useRef(null);
+
+      const formatCep = (v) => {
+        const d = v.replace(/\D/g, "").slice(0, 8);
+        return d.length > 5 ? d.slice(0, 5) + "-" + d.slice(5) : d;
+      };
+
+      const buscarCep = async (valor) => {
+        const digits = valor.replace(/\D/g, "");
+        if (digits.length !== 8) {
+          setCepStatus("error");
+          setCepMsg("CEP inválido: informe os 8 dígitos.");
+          setCepValidado(false);
+          return;
+        }
+        setCepStatus("loading");
+        setCepMsg("Buscando CEP...");
+        setCepValidado(false);
+        try {
+          const resp = await fetch("https://viacep.com.br/ws/" + digits + "/json/");
+          if (!resp.ok) throw new Error("http");
+          const data = await resp.json();
+          if (data.erro) {
+            setCepStatus("error");
+            setCepMsg("CEP não encontrado. Confira e tente novamente.");
+            setCepValidado(false);
+            return;
+          }
+          const linha = [data.logradouro, data.bairro,
+            data.localidade ? data.localidade + (data.uf ? "/" + data.uf : "") : data.uf]
+            .filter(Boolean).join(", ");
+          setEndereco(linha);
+          setCepStatus("ok");
+          setCepMsg("CEP válido: " + (data.localidade ? data.localidade + "/" + data.uf : data.uf));
+          setCepValidado(true);
+        } catch (err) {
+          setCepStatus("fail");
+          setCepMsg("Não foi possível validar o CEP agora. Verifique sua conexão.");
+          setCepValidado(false);
+        }
+      };
+
+      const onChangeCep = (v) => {
+        const fmt = formatCep(v);
+        setCep(fmt);
+        setCepValidado(false);
+        setCepStatus("idle");
+        setCepMsg("");
+        if (cepTimer.current) clearTimeout(cepTimer.current);
+        if (fmt.replace(/\D/g, "").length === 8) {
+          cepTimer.current = setTimeout(() => buscarCep(fmt), 450);
+        }
+      };
+
+      const onBlurCep = () => {
+        const digits = cep.replace(/\D/g, "");
+        if (digits.length === 8 && !cepValidado) buscarCep(cep);
+      };
+
+      const buildMessage = () => {
+        const linhas = [
+          "Olá SpaceTek! Gostaria de um orçamento.",
+          "Nome: " + nome.trim(),
+          "CEP: " + cep.trim(),
+          "Endereço: " + endereco.trim()
+        ];
+        if (contato.trim()) linhas.push("Contato: " + contato.trim());
+        linhas.push("", "Itens:");
+        items.forEach((i) => linhas.push("- " + i.nome + " (x" + i.qtd + ")"));
+        const total = items.reduce((s, i) => s + i.qtd, 0);
+        linhas.push("", "Total de itens: " + total);
+        if (obs.trim()) linhas.push("", "Observações: " + obs.trim());
+        return linhas.join("\n");
+      };
+
+      const validar = () => {
+        if (!nome.trim()) return "Informe seu nome.";
+        const digits = cep.replace(/\D/g, "");
+        if (digits.length !== 8) return "Informe um CEP válido (8 dígitos).";
+        if (!cepValidado) return "Confirme um CEP válido antes de enviar.";
+        if (!endereco.trim()) return "Informe o número e o complemento do endereço.";
+        return "";
+      };
+
+      const enviar = (e) => {
+        e.preventDefault();
+        const msgErro = validar();
+        if (msgErro) { setErro(msgErro); return; }
+        setErro("");
+        const url = "https://wa.me/" + window.WHATSAPP_NUMBER + "?text=" + encodeURIComponent(buildMessage());
+        window.open(url, "_blank");
+      };
+
+      const copiar = async () => {
+        try {
+          await navigator.clipboard.writeText(buildMessage());
+          setCopiado(true);
+          setTimeout(() => setCopiado(false), 2000);
+        } catch (err) {
+          setErro("Não foi possível copiar automaticamente. Selecione o texto da prévia.");
+        }
+      };
+
+      const campo = (rotulo, valor, setValor, placeholder, extra) =>
+        h("label", { className: "field" },
+          h("span", null, rotulo),
+          h("input", { value: valor, placeholder: placeholder, onChange: (e) => setValor(e.target.value), ...extra })
+        );
+
+      return h("form", { className: "quote", onSubmit: enviar },
+        h("button", { type: "button", className: "quote__back", onClick: onBack }, "← Voltar à sacola"),
+        h("h3", { className: "quote__title" }, "Solicitar orçamento"),
+        campo("Nome *", nome, setNome, "Seu nome"),
+        h("label", { className: "field" },
+          h("span", null, "CEP *"),
+          h("input", { value: cep, placeholder: "00000-000", inputMode: "numeric",
+            onChange: (e) => onChangeCep(e.target.value), onBlur: onBlurCep }),
+          cepMsg && h("small", { className: "field__hint field__hint--" + cepStatus }, cepMsg)
+        ),
+        campo("Endereço *", endereco, setEndereco, "Número e complemento (rua/cidade preenchidos pelo CEP)"),
+        campo("Telefone / E-mail (opcional)", contato, setContato, "(00) 00000-0000 ou email@exemplo.com"),
+        h("label", { className: "field" },
+          h("span", null, "Observações (opcional)"),
+          h("textarea", { value: obs, rows: 2, placeholder: "Cor do filamento, tamanho, prazo...",
+            onChange: (e) => setObs(e.target.value) })
+        ),
+        erro && h("p", { className: "quote__erro" }, erro),
+        h("div", { className: "quote__actions" },
+          h("button", { type: "submit", className: "btn btn--primary btn--block" }, "Enviar no WhatsApp"),
+          h("button", { type: "button", className: "btn btn--ghost btn--block", onClick: copiar },
+            copiado ? "Copiado!" : "Copiar pedido")
+        )
+      );
+    }
+
+    /* ---------- Sacola (drawer) ---------- */
+    function CartDrawer({ open, onClose, items, onInc, onDec, onRemove }) {
+      const [showQuote, setShowQuote] = React.useState(false);
+
+      React.useEffect(() => {
+        const onKey = (e) => { if (e.key === "Escape") onClose(); };
+        if (open) document.addEventListener("keydown", onKey);
+        return () => document.removeEventListener("keydown", onKey);
+      }, [open, onClose]);
+
+      React.useEffect(() => { if (!open) setShowQuote(false); }, [open]);
+
+      const totalItens = items.reduce((s, i) => s + i.qtd, 0);
+
+      return h(React.Fragment, null,
+        h("div", { className: "overlay" + (open ? " overlay--show" : ""), onClick: onClose }),
+        h("aside", { className: "drawer" + (open ? " drawer--open" : ""), "aria-hidden": !open,
+          "aria-label": "Sacola de compras" },
+          h("div", { className: "drawer__head" },
+            h("h2", null, "Sacola" + (totalItens > 0 ? " (" + totalItens + ")" : "")),
+            h("button", { className: "drawer__close", onClick: onClose, "aria-label": "Fechar" }, "×")
+          ),
+          h("div", { className: "drawer__body" },
+            items.length === 0
+              ? h("p", { className: "drawer__empty" }, "Sua sacola está vazia. Adicione peças do catálogo.")
+              : showQuote
+                ? h(QuoteForm, { items: items, onBack: () => setShowQuote(false) })
+                : h("ul", { className: "cart-list" },
+                    items.map((i) => h("li", { className: "cart-item", key: i.id },
+                      h("img", { src: i.imagem, alt: i.nome }),
+                      h("div", { className: "cart-item__info" },
+                        h("strong", null, i.nome),
+                        h("div", { className: "cart-item__qty" },
+                          h("button", { onClick: () => onDec(i.id), "aria-label": "Diminuir" }, "−"),
+                          h("span", null, i.qtd),
+                          h("button", { onClick: () => onInc(i.id), "aria-label": "Aumentar" }, "+")
+                        )
+                      ),
+                      h("button", { className: "cart-item__remove", onClick: () => onRemove(i.id),
+                        "aria-label": "Remover" }, "🗑")
+                    ))
+                  )
+          ),
+          items.length > 0 && !showQuote && h("div", { className: "drawer__foot" },
+            h("div", { className: "drawer__total" }, h("span", null, "Itens"), h("strong", null, totalItens)),
+            h("button", { className: "btn btn--primary btn--block", onClick: () => setShowQuote(true) },
+              "Solicitar orçamento")
+          )
+        )
+      );
+    }
+
+    /* ---------- Hero ---------- */
+    function Hero() {
+      return h("section", { id: "inicio", className: "hero" },
+        h("div", { className: "hero__inner" },
+          h("span", { className: "hero__tag" }, "Impressão 3D sob demanda"),
+          h("h1", { className: "hero__title" }, "Sua ideia, impressa em ", h("span", null, "3D"), "."),
+          h("p", { className: "hero__text" }, "Peças personalizadas, decoração e utilitários impressos com qualidade e acabamento profissional."),
+          h("div", { className: "hero__actions" },
+            h("button", { className: "btn btn--primary", onClick: () => irPara("catalogo") }, "Ver catálogo"),
+            h("button", { className: "btn btn--outline", onClick: () => irPara("lancamentos") }, "Lançamentos")
+          )
+        )
+      );
+    }
+
+    /* ---------- Sobre ---------- */
+    function About() {
+      return h("section", { id: "sobre", className: "section" },
+        h("div", { className: "about" },
+          h("div", null,
+            h("h2", { className: "section__title" }, "Quem somos"),
+            h("p", null, "A SpaceTek é um ateliê de impressão 3D. Transformamos ideias em peças reais, do protótipo ao acabamento final, com atenção aos detalhes e materiais de qualidade."),
+            h("p", null, "Não encontrou o que procura? Fale com a gente e fazemos sob medida para você.")
+          ),
+          h("ul", { className: "about__stats" },
+            h("li", null, h("strong", null, "+500"), h("span", null, "peças impressas")),
+            h("li", null, h("strong", null, "Sob demanda"), h("span", null, "cada peça é única")),
+            h("li", null, h("strong", null, "Envio"), h("span", null, "para todo o Brasil")),
+            h("li", null, h("strong", null, "3D"), h("span", null, "filamentos de qualidade"))
+          )
+        )
+      );
+    }
+
+    /* ---------- Footer ---------- */
+    function Footer() {
+      return h("footer", { className: "footer" },
+        h("p", null, h("strong", null, "SpaceTek"), " — Impressão 3D sob demanda © ", new Date().getFullYear()),
+        h("p", null, "Solicite seu orçamento pelo WhatsApp.")
+      );
+    }
+
+    /* ---------- WhatsApp flutuante ---------- */
+    function WhatsAppFloat() {
+      const url = "https://wa.me/" + window.WHATSAPP_NUMBER +
+        "?text=" + encodeURIComponent("Olá SpaceTek! Gostaria de saber mais sobre as impressões 3D.");
+      return h("a", { className: "wpp", href: url, target: "_blank", rel: "noopener",
+        "aria-label": "Falar no WhatsApp" }, h(WhatsAppIcon, null));
+    }
+
+    /* ---------- App ---------- */
+    function App() {
+      const [cart, setCart] = React.useState(() => {
+        try { return JSON.parse(localStorage.getItem("spacetek_cart")) || {}; }
+        catch (e) { return {}; }
+      });
+      const [cartOpen, setCartOpen] = React.useState(false);
+      const [showAll, setShowAll] = React.useState(false);
+
+      React.useEffect(() => {
+        try { localStorage.setItem("spacetek_cart", JSON.stringify(cart)); }
+        catch (e) { /* armazenamento indisponivel (ex.: file://) — ignora */ }
+      }, [cart]);
+
+      const addItem = (produto) => {
+        setCart((prev) => {
+          const atual = prev[produto.id] || Object.assign({}, produto, { qtd: 0 });
+          const novo = Object.assign({}, prev);
+          novo[produto.id] = Object.assign({}, atual, { qtd: atual.qtd + 1 });
+          return novo;
+        });
+      };
+      const inc = (id) => setCart((p) => Object.assign({}, p, {
+        [id]: Object.assign({}, p[id], { qtd: p[id].qtd + 1 })
+      }));
+      const dec = (id) => setCart((p) => {
+        const novo = Object.assign({}, p);
+        const q = p[id].qtd - 1;
+        if (q <= 0) delete novo[id];
+        else novo[id] = Object.assign({}, p[id], { qtd: q });
+        return novo;
+      });
+      const remove = (id) => setCart((p) => { const n = Object.assign({}, p); delete n[id]; return n; });
+
+      const items = Object.values(cart);
+      const totalItens = items.reduce((s, i) => s + i.qtd, 0);
+
+      return h(React.Fragment, null,
+        h(Header, {
+          cartCount: totalItens,
+          onOpenCart: () => setCartOpen(true),
+          onInicio: () => irPara("inicio"),
+          onVerTodos: () => { setShowAll(true); irPara("catalogo"); },
+          onQuemSomos: () => irPara("sobre")
+        }),
+        h("main", null,
+          h(Hero, null),
+          h(Catalog, { produtos: window.CATALOGO, onAdd: addItem, cart: cart,
+            showAll: showAll, onToggleAll: () => setShowAll((v) => !v) }),
+          h(Lancamentos, { produtos: window.LANCAMENTOS, onAdd: addItem, cart: cart }),
+          h(About, null)
+        ),
+        h(Footer, null),
+        h(WhatsAppFloat, null),
+        h(CartDrawer, { open: cartOpen, onClose: () => setCartOpen(false), items: items,
+          onInc: inc, onDec: dec, onRemove: remove })
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(h(App, null));
+  </script>
+</body>
+</html>
