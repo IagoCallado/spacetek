@@ -1,0 +1,23 @@
+/* Configuracao publica do Firebase (projeto SpaceTek).
+   Estes dados sao publicos por design (vao no cliente).
+   Nao coloque aqui chaves privadas / serviceAccount. */
+
+window.FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCXpR-KHkx-Pwd1whMVvPqbfaiVNELMFG8",
+  authDomain: "spacetek-3bf38.firebaseapp.com",
+  projectId: "spacetek-3bf38",
+  storageBucket: "spacetek-3bf38.firebasestorage.app",
+  messagingSenderId: "95411066854",
+  appId: "1:95411066854:web:304f509bde726c2e96a827"
+};
+
+(function () {
+  if (typeof firebase === "undefined") return;
+  try {
+    firebase.initializeApp(window.FIREBASE_CONFIG);
+    window.fbAuth = firebase.auth();
+    window.fbDb = firebase.firestore();
+  } catch (e) {
+    console.warn("Falha ao inicializar o Firebase:", e);
+  }
+})();
