@@ -142,7 +142,7 @@
     }
 
     /* ---------- Menu lateral ---------- */
-    function MenuDrawer({ open, onClose, onQuemSomos, onVerTodos, categorias, onCategoria }) {
+    function MenuDrawer({ open, onClose, onPersonalizado, categorias, onCategoria }) {
       React.useEffect(() => {
         const onKey = (e) => { if (e.key === "Escape") onClose(); };
         if (open) document.addEventListener("keydown", onKey);
@@ -158,8 +158,7 @@
             h("button", { className: "drawer__close", onClick: onClose, "aria-label": "Fechar" }, "×")
           ),
           h("div", { className: "drawer__body" },
-            h("button", { className: "menu__item", onClick: onQuemSomos }, "Quem somos"),
-            h("button", { className: "menu__item", onClick: onVerTodos }, "Ver todos os produtos"),
+            h("button", { className: "menu__item", onClick: onPersonalizado }, "Impressão personalizada"),
             h("p", { className: "menu__heading" }, "Pesquisar por categoria"),
             categorias.length === 0
               ? h("p", { className: "drawer__empty" }, "Sem categorias.")
@@ -681,6 +680,59 @@
       );
     }
 
+    /* ---------- Impressao personalizada ---------- */
+    function Personalizado() {
+      const passos = [
+        { n: "1", t: "Envie sua ideia", d: "Mande um arquivo 3D (STL, OBJ, 3MF) ou uma foto/referência pelo WhatsApp." },
+        { n: "2", t: "Orçamento", d: "Analisamos o projeto e retornamos com o valor e o prazo." },
+        { n: "3", t: "Produção", d: "Aprovado o orçamento, imprimimos com acabamento de qualidade." },
+        { n: "4", t: "Entrega", d: "Enviamos para todo o Brasil com segurança." }
+      ];
+      const enviar = [
+        "Arquivo 3D ou referência (foto, desenho ou ideia)",
+        "Dimensões aproximadas da peça",
+        "Cor e material desejados",
+        "Quantidade"
+      ];
+      const materiais = ["PLA", "PETG", "ABS", "TPU", "Resina"];
+      const url = "https://wa.me/" + window.WHATSAPP_NUMBER +
+        "?text=" + encodeURIComponent("Olá SpaceTek! Quero solicitar uma impressão personalizada. Tenho um projeto/ideia para enviar.");
+      return h("section", { id: "personalizado", className: "section section--alt" },
+        h("div", { className: "section__head" },
+          h("div", null,
+            h("h2", { className: "section__title" }, "Impressão personalizada"),
+            h("p", { className: "section__sub" }, "Você tem a ideia, nós imprimimos — do arquivo à peça pronta.")
+          )
+        ),
+        h("div", { className: "steps" },
+          passos.map((p) => h("article", { className: "step", key: p.n },
+            h("span", { className: "step__num" }, p.n),
+            h("h3", { className: "step__title" }, p.t),
+            h("p", { className: "step__text" }, p.d)
+          ))
+        ),
+        h("div", { className: "custom" },
+          h("div", { className: "custom__box" },
+            h("h3", { className: "custom__title" }, "O que enviar"),
+            h("ul", { className: "custom__list" },
+              enviar.map((item) => h("li", { key: item }, item))
+            )
+          ),
+          h("div", { className: "custom__box" },
+            h("h3", { className: "custom__title" }, "Materiais disponíveis"),
+            h("ul", { className: "custom__list" },
+              materiais.map((m) => h("li", { key: m }, m))
+            )
+          )
+        ),
+        h("div", { className: "custom__cta" },
+          h("p", { className: "custom__cta-text" }, "Pronto para começar? Fale com a gente e receba seu orçamento."),
+          h("a", { className: "btn btn--primary", href: url, target: "_blank", rel: "noopener" },
+            h(WhatsAppIcon, { width: 20, height: 20 }), "Solicitar orçamento no WhatsApp")
+        )
+      );
+    }
+
     /* ---------- Footer ---------- */
     function Footer() {
       return h("footer", { className: "footer" },
@@ -791,6 +843,7 @@
             showAll: showAll, onToggleAll: () => setShowAll((v) => !v),
             filtro: filtro, onLimparFiltro: limparFiltro }),
           lancamentos.length > 0 && h(Lancamentos, { produtos: lancamentos, onAdd: addItem, cart: cart }),
+          h(Personalizado, null),
           h(About, null)
         ),
         h(Footer, null),
@@ -798,8 +851,7 @@
         h(MenuDrawer, {
           open: menuOpen,
           onClose: () => setMenuOpen(false),
-          onQuemSomos: () => { setMenuOpen(false); irPara("sobre"); },
-          onVerTodos: () => { setMenuOpen(false); limparFiltro(); setShowAll(true); irPara("catalogo"); },
+          onPersonalizado: () => { setMenuOpen(false); irPara("personalizado"); },
           categorias: categorias,
           onCategoria: irCategoria
         }),
