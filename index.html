@@ -677,6 +677,7 @@
       const [dimensoes, setDimensoes] = React.useState("");
       const [editando, setEditando] = React.useState(null);
       const [msg, setMsg] = React.useState("");
+      const [msgErro, setMsgErro] = React.useState(false);
       const [saving, setSaving] = React.useState(false);
       const [importando, setImportando] = React.useState(false);
 
@@ -686,16 +687,18 @@
         return () => document.removeEventListener("keydown", onKey);
       }, [onClose]);
 
+      const mostrarMsg = (texto, erro) => { setMsg(texto); setMsgErro(!!erro); };
+
       const escolherArquivo = async (e) => {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
-        setMsg("Processando imagem...");
+        mostrarMsg("Processando imagem...", false);
         try {
           const dataUrl = await comprimirImagem(file);
           setImagem(dataUrl);
-          setMsg("");
+          mostrarMsg("", false);
         } catch (err) {
-          setMsg("Falha ao processar a imagem.");
+          mostrarMsg("Falha ao processar a imagem.", true);
         }
       };
 
@@ -707,17 +710,17 @@
 
       const salvar = async (ev) => {
         ev.preventDefault();
-        setMsg("");
-        if (!nome.trim()) { setMsg("Informe o nome da peça."); return; }
-        if (!categoria.trim()) { setMsg("Informe a categoria."); return; }
-        if (!window.fbDb) { setMsg("Banco de dados indisponível."); return; }
+        mostrarMsg("", false);
+        if (!nome.trim()) { mostrarMsg("Informe o nome da peça.", true); return; }
+        if (!categoria.trim()) { mostrarMsg("Informe a categoria.", true); return; }
+        if (!window.fbDb) { mostrarMsg("Banco de dados indisponível.", true); return; }
         const precoNum = preco === "" ? null : Number(String(preco).replace(",", "."));
         const pesoNum = peso === "" ? null : Number(String(peso).replace(",", "."));
         if (preco !== "" && (!isFinite(precoNum) || precoNum < 0)) {
-          setMsg("Preço inválido. Use apenas números, ex.: 49.90"); return;
+          mostrarMsg("Preço inválido. Use apenas números, ex.: 49.90", true); return;
         }
         if (peso !== "" && (!isFinite(pesoNum) || pesoNum < 0)) {
-          setMsg("Peso inválido. Use apenas números, ex.: 120"); return;
+          mostrarMsg("Peso inválido. Use apenas números, ex.: 120", true); return;
         }
         const dados = {
           nome: nome.trim(),
@@ -735,16 +738,16 @@
         try {
           if (editando) {
             await window.fbDb.collection("produtos").doc(editando).update(dados);
-            setMsg("Peça atualizada.");
+            mostrarMsg("Peça atualizada.", false);
           } else {
             dados.imagem = imagem || "assets/images/p1.svg";
             dados.ordem = Date.now();
             await window.fbDb.collection("produtos").add(dados);
-            setMsg("Peça adicionada com sucesso.");
+            mostrarMsg("Peça adicionada com sucesso.", false);
           }
           limparForm();
         } catch (err) {
-          setMsg("Erro ao salvar: " + err.message);
+          mostrarMsg("Erro ao salvar: " + err.message, true);
         } finally {
           setSaving(false);
         }
@@ -763,21 +766,21 @@
         setFilamento(p.filamento || "");
         setPeso(p.peso == null ? "" : String(p.peso));
         setDimensoes(p.dimensoes || "");
-        setMsg("Editando: " + (p.nome || ""));
+        mostrarMsg("Editando: " + (p.nome || ""), false);
       };
 
       const remover = async (id) => {
         if (!window.fbDb) return;
         if (!window.confirm("Remover esta peça do catálogo?")) return;
         try { await window.fbDb.collection("produtos").doc(id).delete(); }
-        catch (err) { setMsg("Erro ao remover: " + err.message); }
+        catch (err) { mostrarMsg("Erro ao remover: " + err.message, true); }
       };
 
       const importar = async () => {
         if (!window.fbDb) return;
         if (!window.confirm("Importar o catálogo atual para o banco de dados?")) return;
         setImportando(true);
-        setMsg("");
+        mostrarMsg("", false);
         try {
           const lote = window.fbDb.batch();
           const col = window.fbDb.collection("produtos");
@@ -791,9 +794,9 @@
               esgotado: false, preco: null, descricao: "", filamento: "", peso: null, dimensoes: "" });
           });
           await lote.commit();
-          setMsg("Catálogo importado.");
+          mostrarMsg("Catálogo importado.", false);
         } catch (err) {
-          setMsg("Erro ao importar: " + err.message);
+          mostrarMsg("Erro ao importar: " + err.message, true);
         } finally {
           setImportando(false);
         }
@@ -875,11 +878,11 @@
                 h("input", { type: "file", accept: "image/*", onChange: escolherArquivo })
               ),
               imagem && h("img", { className: "admin__preview", src: imagem, alt: "Prévia" }),
-              msg && h("p", { className: "admin__msg" }, msg),
+              msg && h("p", { className: "admin__msg" + (msgErro ? " admin__msg--erro" : "") }, msg),
               h("button", { type: "submit", className: "btn btn--primary btn--block", disabled: saving },
                 saving ? "Salvando..." : (editando ? "Salvar alterações" : "Adicionar ao catálogo")),
               editando && h("button", { type: "button", className: "btn btn--ghost btn--block",
-                onClick: () => { limparForm(); setMsg(""); } }, "Cancelar edição")
+                onClick: () => { limparForm(); mostrarMsg("", false); } }, "Cancelar edição")
             ),
             h("div", { className: "admin__list" },
               h("div", { className: "admin__list-head" },
