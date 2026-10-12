@@ -500,6 +500,17 @@ a { color: inherit; text-decoration: none; }
 .field__hint--ok { color: #15803d; }
 .field__hint--error,
 .field__hint--fail { color: #c81e1e; }
+.field__erro { font-size: 12.5px; font-weight: 600; color: #c81e1e; }
+.field--erro > span { color: #c81e1e; }
+.field--erro input,
+.field--erro textarea,
+.field--erro select { border-color: #c81e1e; }
+.field--erro input:focus,
+.field--erro textarea:focus,
+.field--erro select:focus {
+  border-color: #c81e1e;
+  box-shadow: 0 0 0 3px rgba(200,30,30,.15);
+}
 .quote__actions { display: flex; flex-direction: column; gap: 10px; }
 
 /* ---------- Footer ---------- */

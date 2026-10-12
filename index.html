@@ -678,6 +678,7 @@
       const [editando, setEditando] = React.useState(null);
       const [msg, setMsg] = React.useState("");
       const [msgErro, setMsgErro] = React.useState(false);
+      const [erros, setErros] = React.useState({});
       const [saving, setSaving] = React.useState(false);
       const [importando, setImportando] = React.useState(false);
 
@@ -688,6 +689,9 @@
       }, [onClose]);
 
       const mostrarMsg = (texto, erro) => { setMsg(texto); setMsgErro(!!erro); };
+      const limparErro = (campo) => setErros((e) => (e[campo] ? Object.assign({}, e, { [campo]: "" }) : e));
+      const erroCampo = (campo) => erros[campo] && h("small", { className: "field__erro" }, erros[campo]);
+      const clsCampo = (campo) => "field" + (erros[campo] ? " field--erro" : "");
 
       const escolherArquivo = async (e) => {
         const file = e.target.files && e.target.files[0];
@@ -706,22 +710,26 @@
         setNome(""); setCategoria(""); setSecao("catalogo"); setNovo(false); setEsgotado(false);
         setImagem(""); setPreco(""); setDescricao(""); setFilamento("");
         setPeso(""); setDimensoes(""); setEditando(null);
+        setErros({});
       };
 
       const salvar = async (ev) => {
         ev.preventDefault();
         mostrarMsg("", false);
-        if (!nome.trim()) { mostrarMsg("Informe o nome da peça.", true); return; }
-        if (!categoria.trim()) { mostrarMsg("Informe a categoria.", true); return; }
-        if (!window.fbDb) { mostrarMsg("Banco de dados indisponível.", true); return; }
         const precoNum = preco === "" ? null : Number(String(preco).replace(",", "."));
         const pesoNum = peso === "" ? null : Number(String(peso).replace(",", "."));
+        const e = {};
+        if (!nome.trim()) e.nome = "Informe o nome da peça.";
+        if (!categoria.trim()) e.categoria = "Informe a categoria.";
         if (preco !== "" && (!isFinite(precoNum) || precoNum < 0)) {
-          mostrarMsg("Preço inválido. Use apenas números, ex.: 49.90", true); return;
+          e.preco = "Preço inválido. Use apenas números, ex.: 49.90";
         }
         if (peso !== "" && (!isFinite(pesoNum) || pesoNum < 0)) {
-          mostrarMsg("Peso inválido. Use apenas números, ex.: 120", true); return;
+          e.peso = "Peso inválido. Use apenas números, ex.: 120";
         }
+        setErros(e);
+        if (e.nome || e.categoria || e.preco || e.peso) return;
+        if (!window.fbDb) { mostrarMsg("Banco de dados indisponível.", true); return; }
         const dados = {
           nome: nome.trim(),
           categoria: categoria.trim(),
@@ -766,6 +774,7 @@
         setFilamento(p.filamento || "");
         setPeso(p.peso == null ? "" : String(p.peso));
         setDimensoes(p.dimensoes || "");
+        setErros({});
         mostrarMsg("Editando: " + (p.nome || ""), false);
       };
 
@@ -813,14 +822,17 @@
           h("div", { className: "admin__grid" },
             h("form", { className: "admin__form", onSubmit: salvar },
               h("h3", null, editando ? "Editar peça" : "Adicionar peça"),
-              h("label", { className: "field" },
+              h("label", { className: clsCampo("nome") },
                 h("span", null, "Nome *"),
                 h("input", { value: nome, placeholder: "Ex.: Vaso Geométrico",
-                  onChange: (e) => setNome(e.target.value) })
+                  onChange: (e) => { setNome(e.target.value); limparErro("nome"); } }),
+                erroCampo("nome")
               ),
-              h("label", { className: "field" },
+              h("label", { className: clsCampo("categoria") },
                 h("span", null, "Categoria *"),
-                h(CatAutocomplete, { value: categoria, onChange: setCategoria, categorias: categorias })
+                h(CatAutocomplete, { value: categoria,
+                  onChange: (v) => { setCategoria(v); limparErro("categoria"); }, categorias: categorias }),
+                erroCampo("categoria")
               ),
               h("label", { className: "field" },
                 h("span", null, "Seção"),
@@ -830,10 +842,11 @@
                 )
               ),
               h("div", { className: "admin__row" },
-                h("label", { className: "field" },
+                h("label", { className: clsCampo("preco") },
                   h("span", null, "Preço (R$)"),
                   h("input", { value: preco, inputMode: "decimal", placeholder: "Ex.: 49.90",
-                    onChange: (e) => setPreco(e.target.value) })
+                    onChange: (e) => { setPreco(e.target.value); limparErro("preco"); } }),
+                  erroCampo("preco")
                 ),
                 h("label", { className: "field" },
                   h("span", null, "Filamento"),
@@ -850,10 +863,11 @@
                   onChange: (e) => setDescricao(e.target.value) })
               ),
               h("div", { className: "admin__row" },
-                h("label", { className: "field" },
+                h("label", { className: clsCampo("peso") },
                   h("span", null, "Peso (g)"),
                   h("input", { value: peso, inputMode: "numeric", placeholder: "Ex.: 120",
-                    onChange: (e) => setPeso(e.target.value) })
+                    onChange: (e) => { setPeso(e.target.value); limparErro("peso"); } }),
+                  erroCampo("peso")
                 ),
                 h("label", { className: "field" },
                   h("span", null, "Dimensões"),
