@@ -711,16 +711,24 @@
         if (!nome.trim()) { setMsg("Informe o nome da peça."); return; }
         if (!categoria.trim()) { setMsg("Informe a categoria."); return; }
         if (!window.fbDb) { setMsg("Banco de dados indisponível."); return; }
+        const precoNum = preco === "" ? null : Number(String(preco).replace(",", "."));
+        const pesoNum = peso === "" ? null : Number(String(peso).replace(",", "."));
+        if (preco !== "" && (!isFinite(precoNum) || precoNum < 0)) {
+          setMsg("Preço inválido. Use apenas números, ex.: 49.90"); return;
+        }
+        if (peso !== "" && (!isFinite(pesoNum) || pesoNum < 0)) {
+          setMsg("Peso inválido. Use apenas números, ex.: 120"); return;
+        }
         const dados = {
           nome: nome.trim(),
           categoria: categoria.trim(),
           secao: secao,
           novo: !!novo,
           esgotado: !!esgotado,
-          preco: preco === "" ? null : Number(String(preco).replace(",", ".")),
+          preco: precoNum,
           descricao: descricao.trim(),
           filamento: filamento,
-          peso: peso === "" ? null : Number(String(peso).replace(",", ".")),
+          peso: pesoNum,
           dimensoes: dimensoes.trim()
         };
         setSaving(true);
@@ -1045,6 +1053,23 @@
         return () => { if (unsub) unsub(); };
       }, []);
 
+      /* Remove do carrinho itens marcados como esgotados no banco. */
+      React.useEffect(() => {
+        if (!produtosFs || produtosFs.length === 0) return;
+        setCart((prev) => {
+          const mapa = {};
+          produtosFs.forEach((p) => { mapa[p.id] = p; });
+          let mudou = false;
+          const novo = {};
+          Object.keys(prev).forEach((id) => {
+            const prod = mapa[id];
+            if (prod && prod.esgotado) { mudou = true; return; }
+            novo[id] = prev[id];
+          });
+          return mudou ? novo : prev;
+        });
+      }, [produtosFs]);
+
       const addItem = (produto) => {
         if (produto.esgotado) return;
         setCart((prev) => {
@@ -1155,14 +1180,17 @@
     }
 
     /* Carrega a flag de manutencao sem cache (para valer de imediato).
-       Fallback: se a leitura falhar, renderiza o site normalmente. */
-    (function () {
+       Em http(s): se a leitura falhar, mostra a manutencao (fail-closed),
+       para nao revelar o site. Em file://: usa a flag ja carregada. */
+    if (location.protocol === "file:") {
+      iniciar();
+    } else {
       const s = document.createElement("script");
       s.src = "data/maintenance.js?t=" + Date.now();
       s.onload = iniciar;
-      s.onerror = iniciar;
+      s.onerror = () => raiz.render(h(Manutencao, null));
       document.head.appendChild(s);
-    })();
+    }
   </script>
 </body>
 </html>
