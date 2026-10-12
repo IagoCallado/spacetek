@@ -5,7 +5,7 @@
    Exemplo:
      window.MANUTENCAO = true;   -> mostra a tela de manutencao
      window.MANUTENCAO = false;  -> mostra o site normal                 */
-window.MANUTENCAO = false;
+window.MANUTENCAO = true;
 
 /* Mensagem exibida na tela de manutencao (opcional). */
 window.MANUTENCAO_MSG = "Estamos realizando melhorias por aqui. Voltamos em breve!";
