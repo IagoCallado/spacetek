@@ -16,6 +16,7 @@
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
   <script src="data/products.js"></script>
+  <script src="data/maintenance.js"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -206,17 +207,22 @@
     /* ---------- Card de produto ---------- */
     function ProductCard({ produto, onAdd, qtd, onOpen }) {
       const preco = precoDe(produto);
-      return h("article", { className: "card card--click", onClick: () => onOpen && onOpen(produto) },
+      const esgotado = !!produto.esgotado;
+      return h("article", { className: "card card--click" + (esgotado ? " card--esgotado" : ""),
+          onClick: () => onOpen && onOpen(produto) },
         h("div", { className: "card__media" },
-          produto.novo && h("span", { className: "card__badge" }, "Novo"),
+          esgotado
+            ? h("span", { className: "card__badge card__badge--esgotado" }, "Esgotado")
+            : (produto.novo && h("span", { className: "card__badge" }, "Novo")),
           h("img", { src: produto.imagem, alt: produto.nome, loading: "lazy" })
         ),
         h("div", { className: "card__body" },
           h("h3", { className: "card__title" }, produto.nome),
           h("p", { className: "card__cat" }, produto.categoria),
           h("p", { className: "card__price" }, preco ? formatBRL(preco) : "Sob consulta"),
-          h("button", { className: "btn btn--primary card__add",
-            onClick: (e) => { e.stopPropagation(); onAdd(produto); } }, "Adicionar"),
+          h("button", { className: "btn btn--primary card__add", disabled: esgotado,
+            onClick: (e) => { e.stopPropagation(); if (!esgotado) onAdd(produto); } },
+            esgotado ? "Esgotado" : "Adicionar"),
           qtd > 0 && h("span", { className: "card__qtd" }, "No carrinho: " + qtd)
         )
       );
@@ -242,13 +248,16 @@
 
       const total = preco && frete ? preco + frete.valor : null;
       const cepIncompleto = cep.replace(/\D/g, "").length === 8 && !frete;
+      const esgotado = !!produto.esgotado;
 
       return h("div", { className: "modal-overlay", onClick: onClose },
         h("div", { className: "modal modal--produto", onClick: (e) => e.stopPropagation() },
           h("button", { type: "button", className: "modal__close", onClick: onClose, "aria-label": "Fechar" }, "×"),
           h("div", { className: "produto" },
             h("div", { className: "produto__media" },
-              produto.novo && h("span", { className: "card__badge" }, "Novo"),
+              (esgotado || produto.novo) && h("span",
+                { className: "card__badge" + (esgotado ? " card__badge--esgotado" : "") },
+                esgotado ? "Esgotado" : "Novo"),
               h("img", { src: produto.imagem, alt: produto.nome })
             ),
             h("div", { className: "produto__info" },
@@ -275,8 +284,9 @@
                 total && h("p", { className: "frete__total" }, "Total com frete: ",
                   h("strong", null, formatBRL(total)))
               ),
-              h("button", { className: "btn btn--primary btn--block", onClick: () => onAdd(produto) },
-                "Adicionar ao carrinho")
+              h("button", { className: "btn btn--primary btn--block", disabled: esgotado,
+                onClick: () => { if (!esgotado) onAdd(produto); } },
+                esgotado ? "Produto esgotado" : "Adicionar ao carrinho")
             )
           )
         )
@@ -658,6 +668,7 @@
       const [categoria, setCategoria] = React.useState("");
       const [secao, setSecao] = React.useState("catalogo");
       const [novo, setNovo] = React.useState(false);
+      const [esgotado, setEsgotado] = React.useState(false);
       const [imagem, setImagem] = React.useState("");
       const [preco, setPreco] = React.useState("");
       const [descricao, setDescricao] = React.useState("");
@@ -689,7 +700,7 @@
       };
 
       const limparForm = () => {
-        setNome(""); setCategoria(""); setSecao("catalogo"); setNovo(false);
+        setNome(""); setCategoria(""); setSecao("catalogo"); setNovo(false); setEsgotado(false);
         setImagem(""); setPreco(""); setDescricao(""); setFilamento("");
         setPeso(""); setDimensoes(""); setEditando(null);
       };
@@ -705,6 +716,7 @@
           categoria: categoria.trim(),
           secao: secao,
           novo: !!novo,
+          esgotado: !!esgotado,
           preco: preco === "" ? null : Number(String(preco).replace(",", ".")),
           descricao: descricao.trim(),
           filamento: filamento,
@@ -736,6 +748,7 @@
         setCategoria(p.categoria || "");
         setSecao(p.secao === "lancamentos" ? "lancamentos" : "catalogo");
         setNovo(!!p.novo);
+        setEsgotado(!!p.esgotado);
         setImagem(p.imagem || "");
         setPreco(p.preco == null ? "" : String(p.preco));
         setDescricao(p.descricao || "");
@@ -767,7 +780,7 @@
             const ref = col.doc();
             lote.set(ref, { nome: p.nome, categoria: p.categoria, secao: p.secao,
               novo: !!p.novo, imagem: p.imagem, ordem: i++,
-              preco: null, descricao: "", filamento: "", peso: null, dimensoes: "" });
+              esgotado: false, preco: null, descricao: "", filamento: "", peso: null, dimensoes: "" });
           });
           await lote.commit();
           setMsg("Catálogo importado.");
@@ -837,10 +850,17 @@
                     onChange: (e) => setDimensoes(e.target.value) })
                 )
               ),
-              h("label", { className: "check" },
-                h("input", { type: "checkbox", checked: novo,
-                  onChange: (e) => setNovo(e.target.checked) }),
-                h("span", null, "Marcar como \"Novo\"")
+              h("div", { className: "admin__checks" },
+                h("label", { className: "check" },
+                  h("input", { type: "checkbox", checked: novo,
+                    onChange: (e) => setNovo(e.target.checked) }),
+                  h("span", null, "Marcar como \"Novo\"")
+                ),
+                h("label", { className: "check" },
+                  h("input", { type: "checkbox", checked: esgotado,
+                    onChange: (e) => setEsgotado(e.target.checked) }),
+                  h("span", null, "Esgotado (sem estoque)")
+                )
               ),
               h("label", { className: "field" },
                 h("span", null, "Imagem (comprimida automaticamente)"),
@@ -868,7 +888,8 @@
                         h("strong", null, p.nome),
                         h("span", null, (p.categoria || "-") + " • " +
                           (p.secao === "lancamentos" ? "Lançamentos" : "Catálogo") + " • " +
-                          (precoDe(p) != null ? formatBRL(precoDe(p)) : "Sob consulta"))
+                          (precoDe(p) != null ? formatBRL(precoDe(p)) : "Sob consulta") +
+                          (p.esgotado ? " • Esgotado" : ""))
                       ),
                       h("div", { className: "admin__item-actions" },
                         h("button", { type: "button", className: "btn-editar",
@@ -1025,6 +1046,7 @@
       }, []);
 
       const addItem = (produto) => {
+        if (produto.esgotado) return;
         setCart((prev) => {
           const atual = prev[produto.id] || Object.assign({}, produto, { qtd: 0 });
           const novo = Object.assign({}, prev);
@@ -1112,7 +1134,23 @@
       );
     }
 
-    ReactDOM.createRoot(document.getElementById("root")).render(h(App, null));
+    /* ---------- Tela de manutencao ---------- */
+    function Manutencao() {
+      return h("div", { className: "manutencao" },
+        h("div", { className: "manutencao__card" },
+          h("img", { className: "manutencao__logo", src: "assets/images/logo.jpg", alt: "SpaceTek" }),
+          h("h1", { className: "manutencao__title" }, "Site em manutenção"),
+          h("p", { className: "manutencao__text" }, window.MANUTENCAO_MSG ||
+            "Estamos realizando melhorias. Voltamos em breve!"),
+          h("a", { className: "btn btn--primary", href: "https://wa.me/" + window.WHATSAPP_NUMBER,
+            target: "_blank", rel: "noopener" }, "Falar no WhatsApp")
+        )
+      );
+    }
+
+    const raiz = ReactDOM.createRoot(document.getElementById("root"));
+    if (window.MANUTENCAO) raiz.render(h(Manutencao, null));
+    else raiz.render(h(App, null));
   </script>
 </body>
 </html>

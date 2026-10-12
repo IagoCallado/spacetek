@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Página não encontrada | SpaceTek</title>
+  <meta name="robots" content="noindex" />
+  <link rel="icon" href="/spacetek/assets/images/logo.jpg" />
+  <style>
+    :root {
+      --azul: #0B5FFF;
+      --azul-escuro: #0A2540;
+      --azul-claro: #4C9AFF;
+      --fundo: #F5F7FB;
+      --texto-suave: #5b6b82;
+      --raio: 20px;
+      --sombra: 0 20px 50px rgba(10, 37, 64, .18);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+      background: linear-gradient(135deg, var(--azul-escuro), #13407e);
+      color: var(--azul-escuro);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: var(--raio);
+      box-shadow: var(--sombra);
+      padding: 44px 36px;
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+    }
+    .logo { height: 52px; margin-bottom: 20px; }
+    .code {
+      font-size: 68px;
+      font-weight: 800;
+      line-height: 1;
+      margin: 0;
+      color: var(--azul);
+      letter-spacing: 2px;
+    }
+    h1 { margin: 10px 0 12px; font-size: 24px; color: var(--azul-escuro); }
+    p { margin: 0 0 8px; font-size: 16px; color: var(--texto-suave); line-height: 1.5; }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+      margin-top: 26px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 13px 24px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      border: 2px solid transparent;
+      transition: background .15s ease, transform .15s ease;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn--primary { background: var(--azul); color: #fff; box-shadow: 0 8px 20px rgba(11, 95, 255, .3); }
+    .btn--primary:hover { background: #0848c9; }
+    .btn--ghost { background: #fff; color: var(--azul); border-color: var(--azul); }
+    .btn--ghost:hover { background: #ecf2ff; }
+    .foot { margin-top: 22px; font-size: 13px; color: var(--texto-suave); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo" src="/spacetek/assets/images/logo.jpg" alt="SpaceTek" />
+    <p class="code">404</p>
+    <h1>Página não encontrada</h1>
+    <p>O endereço acessado não existe ou o site está temporariamente fora do ar / em manutenção.</p>
+    <p>Tente voltar ao início ou fale com a gente pelo WhatsApp.</p>
+    <div class="actions">
+      <a class="btn btn--primary" href="/spacetek/">Voltar ao início</a>
+      <a class="btn btn--ghost" href="https://wa.me/5518996903550" target="_blank" rel="noopener">Falar no WhatsApp</a>
+    </div>
+    <p class="foot">SpaceTek — Impressão 3D sob demanda</p>
+  </div>
+</body>
+</html>

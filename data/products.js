@@ -7,6 +7,7 @@
      categoria
      imagem
      novo      (opcional, booleano)
+     esgotado  (opcional, booleano: sem estoque — nao pode ir ao carrinho)
      secao     (opcional: "catalogo" | "lancamentos")
    Campos opcionais editaveis pelo painel admin:
      preco     (numero em R$; vazio = "Sob consulta")
