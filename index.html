@@ -1149,8 +1149,20 @@
     }
 
     const raiz = ReactDOM.createRoot(document.getElementById("root"));
-    if (window.MANUTENCAO) raiz.render(h(Manutencao, null));
-    else raiz.render(h(App, null));
+    function iniciar() {
+      if (window.MANUTENCAO) raiz.render(h(Manutencao, null));
+      else raiz.render(h(App, null));
+    }
+
+    /* Carrega a flag de manutencao sem cache (para valer de imediato).
+       Fallback: se a leitura falhar, renderiza o site normalmente. */
+    (function () {
+      const s = document.createElement("script");
+      s.src = "data/maintenance.js?t=" + Date.now();
+      s.onload = iniciar;
+      s.onerror = iniciar;
+      document.head.appendChild(s);
+    })();
   </script>
 </body>
 </html>
