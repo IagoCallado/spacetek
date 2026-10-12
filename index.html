@@ -499,7 +499,7 @@
         campo("Telefone / E-mail (opcional)", contato, setContato, "(00) 00000-0000 ou email@exemplo.com"),
         h("label", { className: "field" },
           h("span", null, "Observações (opcional)"),
-          h("textarea", { value: obs, rows: 2, placeholder: "Cor do filamento, tamanho, prazo...",
+          h("textarea", { value: obs, rows: 2, placeholder: "Cor do filamento, tamanho...",
             onChange: (e) => setObs(e.target.value) })
         ),
         erro && h("p", { className: "quote__erro" }, erro),
