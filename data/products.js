@@ -1,6 +1,19 @@
 /* Dados do site SpaceTek.
-   Edite aqui para adicionar/remover pecas.
-   Campos: id (unico), nome, categoria, imagem, novo (opcional). */
+   Edite aqui para adicionar/remover pecas (usado como fallback quando o
+   banco de dados Firebase esta vazio ou indisponivel).
+   Campos:
+     id        (unico)
+     nome
+     categoria
+     imagem
+     novo      (opcional, booleano)
+     secao     (opcional: "catalogo" | "lancamentos")
+   Campos opcionais editaveis pelo painel admin:
+     preco     (numero em R$; vazio = "Sob consulta")
+     descricao (texto)
+     filamento ("PLA" | "PETG" | "")
+     peso      (numero em gramas)
+     dimensoes (texto, ex.: "10x5x8 cm") */
 
 window.WHATSAPP_NUMBER = "5518996903550";
 

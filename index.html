@@ -75,6 +75,38 @@
       });
     }
 
+    /* ---------- Precos e frete ---------- */
+    const REGIOES_CEP = {
+      0: "SP", 1: "SP", 2: "RJ/ES", 3: "MG",
+      4: "BA/SE", 5: "PE/AL/PB/RN", 6: "CE/PI/MA",
+      7: "DF/GO/MT/MS/TO/RO/AC", 8: "PR/SC", 9: "RS"
+    };
+    window.FRETE_TABELA = { 0: 15, 1: 15, 2: 20, 3: 20, 4: 32, 5: 32, 6: 35, 7: 28, 8: 22, 9: 22 };
+
+    function precoDe(produto) {
+      const v = produto && produto.preco;
+      const n = typeof v === "number" ? v : parseFloat(v);
+      return isFinite(n) && n > 0 ? n : null;
+    }
+
+    function formatBRL(v) {
+      return "R$ " + Number(v).toFixed(2).replace(".", ",");
+    }
+
+    function formatCep(v) {
+      const d = (v || "").replace(/\D/g, "").slice(0, 8);
+      return d.length > 5 ? d.slice(0, 5) + "-" + d.slice(5) : d;
+    }
+
+    function calcularFrete(cep) {
+      const d = (cep || "").replace(/\D/g, "");
+      if (d.length !== 8) return null;
+      const digito = parseInt(d[0], 10);
+      const valor = window.FRETE_TABELA[digito];
+      if (valor == null) return null;
+      return { valor: valor, regiao: REGIOES_CEP[digito] || "" };
+    }
+
     /* ---------- Icones ---------- */
     function CartIcon(props) {
       return h("svg", { width: 22, height: 22, viewBox: "0 0 24 24", fill: "none",
@@ -172,8 +204,9 @@
     }
 
     /* ---------- Card de produto ---------- */
-    function ProductCard({ produto, onAdd, qtd }) {
-      return h("article", { className: "card" },
+    function ProductCard({ produto, onAdd, qtd, onOpen }) {
+      const preco = precoDe(produto);
+      return h("article", { className: "card card--click", onClick: () => onOpen && onOpen(produto) },
         h("div", { className: "card__media" },
           produto.novo && h("span", { className: "card__badge" }, "Novo"),
           h("img", { src: produto.imagem, alt: produto.nome, loading: "lazy" })
@@ -181,14 +214,77 @@
         h("div", { className: "card__body" },
           h("h3", { className: "card__title" }, produto.nome),
           h("p", { className: "card__cat" }, produto.categoria),
-          h("button", { className: "btn btn--primary card__add", onClick: () => onAdd(produto) }, "Adicionar"),
+          h("p", { className: "card__price" }, preco ? formatBRL(preco) : "Sob consulta"),
+          h("button", { className: "btn btn--primary card__add",
+            onClick: (e) => { e.stopPropagation(); onAdd(produto); } }, "Adicionar"),
           qtd > 0 && h("span", { className: "card__qtd" }, "No carrinho: " + qtd)
         )
       );
     }
 
+    /* ---------- Detalhe do produto (modal) ---------- */
+    function ProdutoModal({ produto, onClose, onAdd }) {
+      const [cep, setCep] = React.useState("");
+      const [frete, setFrete] = React.useState(null);
+      const preco = precoDe(produto);
+
+      React.useEffect(() => {
+        const onKey = (e) => { if (e.key === "Escape") onClose(); };
+        document.addEventListener("keydown", onKey);
+        return () => document.removeEventListener("keydown", onKey);
+      }, [onClose]);
+
+      const onCep = (v) => {
+        const fmt = formatCep(v);
+        setCep(fmt);
+        setFrete(calcularFrete(fmt));
+      };
+
+      const total = preco && frete ? preco + frete.valor : null;
+      const cepIncompleto = cep.replace(/\D/g, "").length === 8 && !frete;
+
+      return h("div", { className: "modal-overlay", onClick: onClose },
+        h("div", { className: "modal modal--produto", onClick: (e) => e.stopPropagation() },
+          h("button", { type: "button", className: "modal__close", onClick: onClose, "aria-label": "Fechar" }, "×"),
+          h("div", { className: "produto" },
+            h("div", { className: "produto__media" },
+              produto.novo && h("span", { className: "card__badge" }, "Novo"),
+              h("img", { src: produto.imagem, alt: produto.nome })
+            ),
+            h("div", { className: "produto__info" },
+              produto.categoria && h("span", { className: "produto__cat" }, produto.categoria),
+              h("h2", { className: "produto__title" }, produto.nome),
+              h("p", { className: "produto__price" }, preco ? formatBRL(preco) : "Sob consulta"),
+              h("p", { className: "produto__desc" }, produto.descricao ||
+                "Peça impressa em 3D sob demanda. Fale com a gente para detalhes de cor, tamanho e acabamento."),
+              h("ul", { className: "produto__meta" },
+                produto.filamento && h("li", null, h("strong", null, "Filamento: "), produto.filamento),
+                produto.peso && h("li", null, h("strong", null, "Peso: "), produto.peso + " g"),
+                produto.dimensoes && h("li", null, h("strong", null, "Dimensões: "), produto.dimensoes)
+              ),
+              h("div", { className: "frete" },
+                h("label", { className: "field" },
+                  h("span", null, "Calcular frete (CEP)"),
+                  h("input", { value: cep, placeholder: "00000-000", inputMode: "numeric",
+                    onChange: (e) => onCep(e.target.value) })
+                ),
+                frete && h("p", { className: "frete__res" }, "Frete para ",
+                  h("strong", null, frete.regiao ? frete.regiao + " (" + cep + ")" : cep), ": ",
+                  h("strong", null, formatBRL(frete.valor))),
+                cepIncompleto && h("p", { className: "frete__res frete__res--erro" }, "CEP inválido."),
+                total && h("p", { className: "frete__total" }, "Total com frete: ",
+                  h("strong", null, formatBRL(total)))
+              ),
+              h("button", { className: "btn btn--primary btn--block", onClick: () => onAdd(produto) },
+                "Adicionar ao carrinho")
+            )
+          )
+        )
+      );
+    }
+
     /* ---------- Catalogo geral ---------- */
-    function Catalog({ produtos, onAdd, cart, showAll, onToggleAll, filtro, onLimparFiltro }) {
+    function Catalog({ produtos, onAdd, cart, showAll, onToggleAll, filtro, onLimparFiltro, onOpen }) {
       const VISIVEL = 6;
       const lista = (showAll || filtro) ? produtos : produtos.slice(0, VISIVEL);
       return h("section", { id: "catalogo", className: "section" },
@@ -206,7 +302,7 @@
         produtos.length === 0
           ? h("p", { className: "drawer__empty" }, "Nenhuma peça encontrada" + (filtro ? " nesta categoria." : "."))
           : h("div", { className: "grid" },
-              lista.map((p) => h(ProductCard, { key: p.id, produto: p, onAdd: onAdd,
+              lista.map((p) => h(ProductCard, { key: p.id, produto: p, onAdd: onAdd, onOpen: onOpen,
                 qtd: cart[p.id] ? cart[p.id].qtd : 0 }))
             ),
         (!filtro && produtos.length > VISIVEL) && h("div", { className: "section__more" },
@@ -217,7 +313,7 @@
     }
 
     /* ---------- Lancamentos (carrossel) ---------- */
-    function Lancamentos({ produtos, onAdd, cart }) {
+    function Lancamentos({ produtos, onAdd, cart, onOpen }) {
       const ref = React.useRef(null);
       const rolar = (dir) => {
         const el = ref.current;
@@ -238,16 +334,16 @@
         ),
         h("div", { className: "carousel", ref: ref },
           produtos.map((p) => h("div", { className: "carousel__item", key: p.id },
-            h(ProductCard, { produto: p, onAdd: onAdd, qtd: cart[p.id] ? cart[p.id].qtd : 0 })
+            h(ProductCard, { produto: p, onAdd: onAdd, onOpen: onOpen, qtd: cart[p.id] ? cart[p.id].qtd : 0 })
           ))
         )
       );
     }
 
     /* ---------- Formulario de orcamento ---------- */
-    function QuoteForm({ items, onBack }) {
+    function QuoteForm({ items, onBack, cepInicial }) {
       const [nome, setNome] = React.useState("");
-      const [cep, setCep] = React.useState("");
+      const [cep, setCep] = React.useState(() => formatCep(cepInicial || ""));
       const [endereco, setEndereco] = React.useState("");
       const [contato, setContato] = React.useState("");
       const [obs, setObs] = React.useState("");
@@ -258,10 +354,15 @@
       const [cepValidado, setCepValidado] = React.useState(false);
       const cepTimer = React.useRef(null);
 
-      const formatCep = (v) => {
-        const d = v.replace(/\D/g, "").slice(0, 8);
-        return d.length > 5 ? d.slice(0, 5) + "-" + d.slice(5) : d;
-      };
+      const semPreco = items.some((i) => !precoDe(i));
+      const subtotal = items.reduce((s, i) => s + (precoDe(i) ? precoDe(i) * i.qtd : 0), 0);
+      const frete = calcularFrete(cep);
+      const total = subtotal + (frete ? frete.valor : 0);
+
+      const cepResumo = semPreco ? "a combinar"
+        : (frete ? formatBRL(frete.valor) : "informe o CEP");
+      const totalResumo = semPreco ? "a combinar"
+        : formatBRL(frete ? total : subtotal);
 
       const buscarCep = async (valor) => {
         const digits = valor.replace(/\D/g, "");
@@ -315,6 +416,11 @@
         if (digits.length === 8 && !cepValidado) buscarCep(cep);
       };
 
+      React.useEffect(() => {
+        const digits = (cepInicial || "").replace(/\D/g, "");
+        if (digits.length === 8) buscarCep(formatCep(digits));
+      }, []);
+
       const buildMessage = () => {
         const linhas = [
           "Olá SpaceTek! Gostaria de um orçamento.",
@@ -324,9 +430,13 @@
         ];
         if (contato.trim()) linhas.push("Contato: " + contato.trim());
         linhas.push("", "Itens:");
-        items.forEach((i) => linhas.push("- " + i.nome + " (x" + i.qtd + ")"));
-        const total = items.reduce((s, i) => s + i.qtd, 0);
-        linhas.push("", "Total de itens: " + total);
+        items.forEach((i) => {
+          const p = precoDe(i);
+          linhas.push("- " + i.nome + " (x" + i.qtd + ")" + (p ? " — " + formatBRL(p * i.qtd) : " — Sob consulta"));
+        });
+        linhas.push("", "Subtotal: " + (semPreco ? "a combinar" : formatBRL(subtotal)));
+        linhas.push("Frete: " + (frete ? formatBRL(frete.valor) + (frete.regiao ? " (" + frete.regiao + ")" : "") : "a calcular"));
+        linhas.push("Total: " + totalResumo);
         if (obs.trim()) linhas.push("", "Observações: " + obs.trim());
         return linhas.join("\n");
       };
@@ -394,6 +504,9 @@
     /* ---------- Sacola (drawer) ---------- */
     function CartDrawer({ open, onClose, items, onInc, onDec, onRemove }) {
       const [showQuote, setShowQuote] = React.useState(false);
+      const [cep, setCep] = React.useState(() => {
+        try { return localStorage.getItem("spacetek_cep") || ""; } catch (e) { return ""; }
+      });
 
       React.useEffect(() => {
         const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -403,7 +516,17 @@
 
       React.useEffect(() => { if (!open) setShowQuote(false); }, [open]);
 
+      React.useEffect(() => {
+        try { localStorage.setItem("spacetek_cep", cep); } catch (e) { /* ignora */ }
+      }, [cep]);
+
+      const onCep = (v) => setCep(formatCep(v));
+
       const totalItens = items.reduce((s, i) => s + i.qtd, 0);
+      const semPreco = items.some((i) => !precoDe(i));
+      const subtotal = items.reduce((s, i) => s + (precoDe(i) ? precoDe(i) * i.qtd : 0), 0);
+      const frete = calcularFrete(cep);
+      const total = subtotal + (frete ? frete.valor : 0);
 
       return h(React.Fragment, null,
         h("div", { className: "overlay" + (open ? " overlay--show" : ""), onClick: onClose }),
@@ -417,12 +540,14 @@
             items.length === 0
               ? h("p", { className: "drawer__empty" }, "Sua sacola está vazia. Adicione peças do catálogo.")
               : showQuote
-                ? h(QuoteForm, { items: items, onBack: () => setShowQuote(false) })
+                ? h(QuoteForm, { items: items, onBack: () => setShowQuote(false), cepInicial: cep })
                 : h("ul", { className: "cart-list" },
                     items.map((i) => h("li", { className: "cart-item", key: i.id },
                       h("img", { src: i.imagem, alt: i.nome }),
                       h("div", { className: "cart-item__info" },
                         h("strong", null, i.nome),
+                        h("span", { className: "cart-item__price" },
+                          precoDe(i) ? formatBRL(precoDe(i) * i.qtd) : "Sob consulta"),
                         h("div", { className: "cart-item__qty" },
                           h("button", { onClick: () => onDec(i.id), "aria-label": "Diminuir" }, "−"),
                           h("span", null, i.qtd),
@@ -435,7 +560,21 @@
                   )
           ),
           items.length > 0 && !showQuote && h("div", { className: "drawer__foot" },
-            h("div", { className: "drawer__total" }, h("span", null, "Itens"), h("strong", null, totalItens)),
+            h("div", { className: "resumo" },
+              h("div", { className: "resumo__linha" }, h("span", null, "Subtotal"),
+                h("strong", null, semPreco ? "a combinar" : formatBRL(subtotal))),
+              h("label", { className: "field field--cep" },
+                h("span", null, "CEP para calcular o frete"),
+                h("input", { value: cep, placeholder: "00000-000", inputMode: "numeric",
+                  onChange: (e) => onCep(e.target.value) })
+              ),
+              h("div", { className: "resumo__linha" }, h("span", null, "Frete"),
+                h("strong", null, frete
+                  ? formatBRL(frete.valor) + (frete.regiao ? " • " + frete.regiao : "")
+                  : "informe o CEP")),
+              h("div", { className: "resumo__linha resumo__linha--total" }, h("span", null, "Total"),
+                h("strong", null, semPreco ? "a combinar" : formatBRL(frete ? total : subtotal)))
+            ),
             h("button", { className: "btn btn--primary btn--block", onClick: () => setShowQuote(true) },
               "Solicitar orçamento")
           )
@@ -481,9 +620,34 @@
             h("input", { type: "password", value: senha, placeholder: "••••••••",
               onChange: (e) => setSenha(e.target.value) })
           ),
-          erro && h("p", { className: "quote__erro" }, erro),
+        h("div", { className: "resumo resumo--form" },
+          h("div", { className: "resumo__linha" }, h("span", null, "Subtotal"),
+            h("strong", null, semPreco ? "a combinar" : formatBRL(subtotal))),
+          h("div", { className: "resumo__linha" }, h("span", null, "Frete"),
+            h("strong", null, cepResumo)),
+          h("div", { className: "resumo__linha resumo__linha--total" }, h("span", null, "Total"),
+            h("strong", null, totalResumo))
+        ),
+        erro && h("p", { className: "quote__erro" }, erro),
           h("button", { type: "submit", className: "btn btn--primary btn--block", disabled: carregando },
             carregando ? "Entrando..." : "Entrar")
+        )
+      );
+    }
+
+    /* ---------- Autocomplete de categoria ---------- */
+    function CatAutocomplete({ value, onChange, categorias }) {
+      const [aberto, setAberto] = React.useState(false);
+      const termo = (value || "").toLowerCase();
+      const sugestoes = (categorias || []).filter((c) => c.toLowerCase().indexOf(termo) >= 0);
+      return h("div", { className: "autocomplete" },
+        h("input", { value: value, placeholder: "Ex.: Decoração",
+          onChange: (e) => { onChange(e.target.value); setAberto(true); },
+          onFocus: () => setAberto(true),
+          onBlur: () => setTimeout(() => setAberto(false), 150) }),
+        aberto && sugestoes.length > 0 && h("ul", { className: "autocomplete__list" },
+          sugestoes.map((c) => h("li", { key: c,
+            onMouseDown: (e) => { e.preventDefault(); onChange(c); setAberto(false); } }, c))
         )
       );
     }
@@ -495,6 +659,12 @@
       const [secao, setSecao] = React.useState("catalogo");
       const [novo, setNovo] = React.useState(false);
       const [imagem, setImagem] = React.useState("");
+      const [preco, setPreco] = React.useState("");
+      const [descricao, setDescricao] = React.useState("");
+      const [filamento, setFilamento] = React.useState("");
+      const [peso, setPeso] = React.useState("");
+      const [dimensoes, setDimensoes] = React.useState("");
+      const [editando, setEditando] = React.useState(null);
       const [msg, setMsg] = React.useState("");
       const [saving, setSaving] = React.useState(false);
       const [importando, setImportando] = React.useState(false);
@@ -518,29 +688,61 @@
         }
       };
 
-      const adicionar = async (ev) => {
+      const limparForm = () => {
+        setNome(""); setCategoria(""); setSecao("catalogo"); setNovo(false);
+        setImagem(""); setPreco(""); setDescricao(""); setFilamento("");
+        setPeso(""); setDimensoes(""); setEditando(null);
+      };
+
+      const salvar = async (ev) => {
         ev.preventDefault();
         setMsg("");
         if (!nome.trim()) { setMsg("Informe o nome da peça."); return; }
         if (!categoria.trim()) { setMsg("Informe a categoria."); return; }
         if (!window.fbDb) { setMsg("Banco de dados indisponível."); return; }
+        const dados = {
+          nome: nome.trim(),
+          categoria: categoria.trim(),
+          secao: secao,
+          novo: !!novo,
+          preco: preco === "" ? null : Number(String(preco).replace(",", ".")),
+          descricao: descricao.trim(),
+          filamento: filamento,
+          peso: peso === "" ? null : Number(String(peso).replace(",", ".")),
+          dimensoes: dimensoes.trim()
+        };
         setSaving(true);
         try {
-          await window.fbDb.collection("produtos").add({
-            nome: nome.trim(),
-            categoria: categoria.trim(),
-            secao: secao,
-            novo: !!novo,
-            imagem: imagem || "assets/images/p1.svg",
-            ordem: Date.now()
-          });
-          setNome(""); setCategoria(""); setNovo(false); setImagem("");
-          setMsg("Peça adicionada com sucesso.");
+          if (editando) {
+            await window.fbDb.collection("produtos").doc(editando).update(dados);
+            setMsg("Peça atualizada.");
+          } else {
+            dados.imagem = imagem || "assets/images/p1.svg";
+            dados.ordem = Date.now();
+            await window.fbDb.collection("produtos").add(dados);
+            setMsg("Peça adicionada com sucesso.");
+          }
+          limparForm();
         } catch (err) {
           setMsg("Erro ao salvar: " + err.message);
         } finally {
           setSaving(false);
         }
+      };
+
+      const editar = (p) => {
+        setEditando(p.id);
+        setNome(p.nome || "");
+        setCategoria(p.categoria || "");
+        setSecao(p.secao === "lancamentos" ? "lancamentos" : "catalogo");
+        setNovo(!!p.novo);
+        setImagem(p.imagem || "");
+        setPreco(p.preco == null ? "" : String(p.preco));
+        setDescricao(p.descricao || "");
+        setFilamento(p.filamento || "");
+        setPeso(p.peso == null ? "" : String(p.peso));
+        setDimensoes(p.dimensoes || "");
+        setMsg("Editando: " + (p.nome || ""));
       };
 
       const remover = async (id) => {
@@ -564,7 +766,8 @@
           base.forEach((p) => {
             const ref = col.doc();
             lote.set(ref, { nome: p.nome, categoria: p.categoria, secao: p.secao,
-              novo: !!p.novo, imagem: p.imagem, ordem: i++ });
+              novo: !!p.novo, imagem: p.imagem, ordem: i++,
+              preco: null, descricao: "", filamento: "", peso: null, dimensoes: "" });
           });
           await lote.commit();
           setMsg("Catálogo importado.");
@@ -584,8 +787,8 @@
           ),
           h("p", { className: "admin__user" }, "Conectado como ", h("strong", null, user && user.email)),
           h("div", { className: "admin__grid" },
-            h("form", { className: "admin__form", onSubmit: adicionar },
-              h("h3", null, "Adicionar peça"),
+            h("form", { className: "admin__form", onSubmit: salvar },
+              h("h3", null, editando ? "Editar peça" : "Adicionar peça"),
               h("label", { className: "field" },
                 h("span", null, "Nome *"),
                 h("input", { value: nome, placeholder: "Ex.: Vaso Geométrico",
@@ -593,17 +796,45 @@
               ),
               h("label", { className: "field" },
                 h("span", null, "Categoria *"),
-                h("input", { value: categoria, list: "lista-categorias", placeholder: "Ex.: Decoração",
-                  onChange: (e) => setCategoria(e.target.value) }),
-                h("datalist", { id: "lista-categorias" },
-                  categorias.map((c) => h("option", { key: c, value: c }))
-                )
+                h(CatAutocomplete, { value: categoria, onChange: setCategoria, categorias: categorias })
               ),
               h("label", { className: "field" },
                 h("span", null, "Seção"),
                 h("select", { value: secao, onChange: (e) => setSecao(e.target.value) },
                   h("option", { value: "catalogo" }, "Catálogo"),
                   h("option", { value: "lancamentos" }, "Lançamentos")
+                )
+              ),
+              h("div", { className: "admin__row" },
+                h("label", { className: "field" },
+                  h("span", null, "Preço (R$)"),
+                  h("input", { value: preco, inputMode: "decimal", placeholder: "Ex.: 49.90",
+                    onChange: (e) => setPreco(e.target.value) })
+                ),
+                h("label", { className: "field" },
+                  h("span", null, "Filamento"),
+                  h("select", { value: filamento, onChange: (e) => setFilamento(e.target.value) },
+                    h("option", { value: "" }, "—"),
+                    h("option", { value: "PLA" }, "PLA"),
+                    h("option", { value: "PETG" }, "PETG")
+                  )
+                )
+              ),
+              h("label", { className: "field" },
+                h("span", null, "Descrição"),
+                h("textarea", { value: descricao, rows: 3, placeholder: "Detalhes da peça...",
+                  onChange: (e) => setDescricao(e.target.value) })
+              ),
+              h("div", { className: "admin__row" },
+                h("label", { className: "field" },
+                  h("span", null, "Peso (g)"),
+                  h("input", { value: peso, inputMode: "numeric", placeholder: "Ex.: 120",
+                    onChange: (e) => setPeso(e.target.value) })
+                ),
+                h("label", { className: "field" },
+                  h("span", null, "Dimensões"),
+                  h("input", { value: dimensoes, placeholder: "Ex.: 10x5x8 cm",
+                    onChange: (e) => setDimensoes(e.target.value) })
                 )
               ),
               h("label", { className: "check" },
@@ -618,7 +849,9 @@
               imagem && h("img", { className: "admin__preview", src: imagem, alt: "Prévia" }),
               msg && h("p", { className: "admin__msg" }, msg),
               h("button", { type: "submit", className: "btn btn--primary btn--block", disabled: saving },
-                saving ? "Salvando..." : "Adicionar ao catálogo")
+                saving ? "Salvando..." : (editando ? "Salvar alterações" : "Adicionar ao catálogo")),
+              editando && h("button", { type: "button", className: "btn btn--ghost btn--block",
+                onClick: () => { limparForm(); setMsg(""); } }, "Cancelar edição")
             ),
             h("div", { className: "admin__list" },
               h("div", { className: "admin__list-head" },
@@ -634,10 +867,15 @@
                       h("div", { className: "admin__item-info" },
                         h("strong", null, p.nome),
                         h("span", null, (p.categoria || "-") + " • " +
-                          (p.secao === "lancamentos" ? "Lançamentos" : "Catálogo"))
+                          (p.secao === "lancamentos" ? "Lançamentos" : "Catálogo") + " • " +
+                          (precoDe(p) != null ? formatBRL(precoDe(p)) : "Sob consulta"))
                       ),
-                      h("button", { type: "button", className: "cart-item__remove",
-                        onClick: () => remover(p.id), "aria-label": "Remover" }, "🗑")
+                      h("div", { className: "admin__item-actions" },
+                        h("button", { type: "button", className: "btn-editar",
+                          onClick: () => editar(p), "aria-label": "Editar" }, "Editar"),
+                        h("button", { type: "button", className: "cart-item__remove",
+                          onClick: () => remover(p.id), "aria-label": "Remover" }, "🗑")
+                      )
                     ))
                   )
             )
@@ -694,7 +932,7 @@
         "Cor e material desejados",
         "Quantidade"
       ];
-      const materiais = ["PLA", "PETG", "ABS", "TPU", "Resina"];
+      const materiais = ["PLA", "PETG"];
       const url = "https://wa.me/" + window.WHATSAPP_NUMBER +
         "?text=" + encodeURIComponent("Olá SpaceTek! Quero solicitar uma impressão personalizada. Tenho um projeto/ideia para enviar.");
       return h("section", { id: "personalizado", className: "section section--alt" },
@@ -762,6 +1000,7 @@
       const [adminOpen, setAdminOpen] = React.useState(false);
       const [user, setUser] = React.useState(null);
       const [produtosFs, setProdutosFs] = React.useState(null);
+      const [selected, setSelected] = React.useState(null);
 
       React.useEffect(() => {
         try { localStorage.setItem("spacetek_cart", JSON.stringify(cart)); }
@@ -841,8 +1080,9 @@
           h(Hero, null),
           h(Catalog, { produtos: catalogoFiltrado, onAdd: addItem, cart: cart,
             showAll: showAll, onToggleAll: () => setShowAll((v) => !v),
-            filtro: filtro, onLimparFiltro: limparFiltro }),
-          lancamentos.length > 0 && h(Lancamentos, { produtos: lancamentos, onAdd: addItem, cart: cart }),
+            filtro: filtro, onLimparFiltro: limparFiltro, onOpen: setSelected }),
+          lancamentos.length > 0 && h(Lancamentos, { produtos: lancamentos, onAdd: addItem, cart: cart,
+            onOpen: setSelected }),
           h(Personalizado, null),
           h(About, null)
         ),
@@ -857,6 +1097,8 @@
         }),
         h(CartDrawer, { open: cartOpen, onClose: () => setCartOpen(false), items: items,
           onInc: inc, onDec: dec, onRemove: remove }),
+        selected && h(ProdutoModal, { produto: selected, onClose: () => setSelected(null),
+          onAdd: (p) => { addItem(p); setSelected(null); setCartOpen(true); } }),
         adminOpen && (user
           ? h(AdminPanel, {
               user: user,
