@@ -1187,7 +1187,18 @@ a:focus-visible {
   .about { grid-template-columns: 1fr; padding: 32px; }
   .section__head { flex-direction: column; align-items: flex-start; }
   .hero__grid { grid-template-columns: 1fr; gap: 32px; }
-  .hero__visual { display: none; }
+  .hero__visual {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    margin: 0 -20px;
+    padding: 2px 20px 6px;
+  }
+  .hero__visual::-webkit-scrollbar { display: none; }
+  .hero__card { flex: 0 0 150px; scroll-snap-align: start; }
+  .hero__card:nth-child(2) { transform: none; }
 }
 @media (max-width: 680px) {
   .header__inner { flex-wrap: nowrap; }

@@ -13,21 +13,21 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.8" />
-  <script>window.__APP_VERSION = "2026-10-12.8";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.9" />
+  <script>window.__APP_VERSION = "2026-10-12.9";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.8"></script>
-  <script src="data/maintenance.js?v=2026-10-12.8"></script>
+  <script src="data/products.js?v=2026-10-12.9"></script>
+  <script src="data/maintenance.js?v=2026-10-12.9"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.8"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.9"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -719,7 +719,6 @@
       const [soDestaque, setSoDestaque] = React.useState(false);
       const [ordenando, setOrdenando] = React.useState(false);
       const formRef = React.useRef(null);
-      const overlayProps = useOverlayClose(onClose);
 
       React.useEffect(() => {
         const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -897,9 +896,12 @@
       const salvarHero = async (v) => {
         if (!window.fbDb) { mostrarMsg("Banco de dados indisponível.", true); return; }
         try {
-          await window.fbDb.doc("config/geral").set({ hero: v }, { merge: true });
+          /* Config guardada em "_site" (mesma colecao dos produtos, sem "ordem",
+             entao fica fora da listagem) para usar as mesmas regras do Firestore. */
+          await window.fbDb.collection("produtos").doc("_site").set({ hero: v }, { merge: true });
           mostrarMsg(v === "destaques" ? "Hero usará os produtos em destaque." : "Hero mostrará os Lançamentos.", false);
         } catch (err) {
+          console.warn("Falha ao salvar config do Hero:", err.code || err.message);
           mostrarMsg("Erro ao salvar: " + err.message, true);
         }
       };
@@ -942,7 +944,7 @@
       });
       const nDestaques = listaBase.filter((p) => p.destaque).length;
 
-      return h("div", Object.assign({ className: "modal-overlay" }, overlayProps),
+      return h("div", { className: "modal-overlay" },
         h("div", { className: "modal admin", onClick: (e) => e.stopPropagation() },
           h("button", { type: "button", className: "modal__close", onClick: onClose, "aria-label": "Fechar" }, "×"),
           h("div", { className: "admin__head" },
@@ -1301,10 +1303,22 @@
       React.useEffect(() => {
         if (!window.fbDb) return;
         let unsub = null;
+        const aplicarLegado = () => {
+          window.fbDb.doc("config/geral").get()
+            .then((s) => { const d = s.exists ? s.data() : {}; setCfg(d.hero ? d : {}); })
+            .catch(() => setCfg({}));
+        };
         try {
-          unsub = window.fbDb.doc("config/geral").onSnapshot(
-            (snap) => setCfg(snap.exists ? snap.data() : {}),
-            (err) => { console.warn("Firestore config:", err.message); setCfg({}); }
+          unsub = window.fbDb.collection("produtos").doc("_site").onSnapshot(
+            (snap) => {
+              const d = snap.exists ? snap.data() : {};
+              if (d.hero) setCfg(d);
+              else aplicarLegado();
+            },
+            (err) => {
+              console.warn("Firestore config:", err.code || err.message);
+              aplicarLegado();
+            }
           );
         } catch (e) { setCfg({}); }
         return () => { if (unsub) unsub(); };
