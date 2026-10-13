@@ -3,26 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <title>SpaceTek | Impressão 3D sob demanda</title>
   <meta name="description" content="SpaceTek — catálogo de impressões 3D sob demanda. Escolha suas peças e solicite um orçamento pelo WhatsApp." />
   <meta property="og:title" content="SpaceTek | Impressão 3D" />
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.1" />
+  <script>window.__APP_VERSION = "2026-10-12.1";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js"></script>
-  <script src="data/maintenance.js"></script>
+  <script src="data/products.js?v=2026-10-12.1"></script>
+  <script src="data/maintenance.js?v=2026-10-12.1"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.1"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -630,14 +634,6 @@
             h("input", { type: "password", value: senha, placeholder: "••••••••",
               onChange: (e) => setSenha(e.target.value) })
           ),
-        h("div", { className: "resumo resumo--form" },
-          h("div", { className: "resumo__linha" }, h("span", null, "Subtotal"),
-            h("strong", null, semPreco ? "a combinar" : formatBRL(subtotal))),
-          h("div", { className: "resumo__linha" }, h("span", null, "Frete"),
-            h("strong", null, cepResumo)),
-          h("div", { className: "resumo__linha resumo__linha--total" }, h("span", null, "Total"),
-            h("strong", null, totalResumo))
-        ),
         erro && h("p", { className: "quote__erro" }, erro),
           h("button", { type: "submit", className: "btn btn--primary btn--block", disabled: carregando },
             carregando ? "Entrando..." : "Entrar")
@@ -1176,6 +1172,29 @@
       );
     }
 
+    /* ---------- Protecao contra erros de render (evita tela branca) ---------- */
+    class ErrorBoundary extends React.Component {
+      constructor(props) { super(props); this.state = { erro: null }; }
+      static getDerivedStateFromError(err) { return { erro: err }; }
+      componentDidCatch(err, info) {
+        try { console.error("Erro na aplicacao:", err, info); } catch (e) {}
+      }
+      render() {
+        if (this.state.erro) {
+          return h("div", { className: "erro-app" },
+            h("div", { className: "erro-app__card" },
+              h("h1", { className: "erro-app__title" }, "Algo deu errado"),
+              h("p", { className: "erro-app__text" },
+                "Ocorreu um erro inesperado. Tente recarregar a página."),
+              h("button", { type: "button", className: "btn btn--primary",
+                onClick: () => location.reload() }, "Recarregar")
+            )
+          );
+        }
+        return this.props.children;
+      }
+    }
+
     /* ---------- Tela de manutencao ---------- */
     function Manutencao() {
       return h("div", { className: "manutencao" },
@@ -1192,8 +1211,8 @@
 
     const raiz = ReactDOM.createRoot(document.getElementById("root"));
     function iniciar() {
-      if (window.MANUTENCAO) raiz.render(h(Manutencao, null));
-      else raiz.render(h(App, null));
+      raiz.render(h(ErrorBoundary, null,
+        window.MANUTENCAO ? h(Manutencao, null) : h(App, null)));
     }
 
     /* Carrega a flag de manutencao sem cache (para valer de imediato).
@@ -1205,9 +1224,37 @@
       const s = document.createElement("script");
       s.src = "data/maintenance.js?t=" + Date.now();
       s.onload = iniciar;
-      s.onerror = () => raiz.render(h(Manutencao, null));
+      s.onerror = () => raiz.render(h(ErrorBoundary, null, h(Manutencao, null)));
       document.head.appendChild(s);
     }
+  </script>
+
+  <!-- Auto-atualizacao: se a versao publicada mudar, recarrega sem cache. -->
+  <script>
+    (function () {
+      if (location.protocol === "file:") return;
+      try {
+        var req = new XMLHttpRequest();
+        req.open("GET", "version.json?t=" + Date.now(), true);
+        req.onload = function () {
+          try {
+            var dados = JSON.parse(req.responseText);
+            var nova = dados && dados.v;
+            if (!nova) return;
+            if (nova !== window.__APP_VERSION) {
+              var chave = "spacetek_ver";
+              if (sessionStorage.getItem(chave) !== nova) {
+                sessionStorage.setItem(chave, nova);
+                location.replace(location.pathname + "?v=" + encodeURIComponent(nova) + location.hash);
+              }
+            } else if (location.search.indexOf("v=") >= 0) {
+              history.replaceState(null, "", location.pathname + location.hash);
+            }
+          } catch (e) {}
+        };
+        req.send();
+      } catch (e) {}
+    })();
   </script>
 </body>
 </html>
