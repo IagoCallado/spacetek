@@ -837,6 +837,83 @@ a:focus-visible {
 .admin__item img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; }
 .admin__item-info strong { display: block; font-size: 14px; color: var(--azul-escuro); }
 .admin__item-info span { font-size: 12px; color: var(--texto-suave); }
+.admin__item-nome { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.badge-destaque {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #8a5a00;
+  background: #fff3cd;
+  border: 1px solid #ffe08a;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.admin__item-reorder { display: flex; gap: 4px; margin-top: 6px; }
+.btn-setinha {
+  width: 26px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--borda);
+  border-radius: 6px;
+  background: var(--branco);
+  color: var(--azul-escuro);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.btn-setinha:hover:not(:disabled) { background: var(--azul-suave); border-color: var(--azul-claro); }
+.btn-setinha:disabled { opacity: 0.35; cursor: not-allowed; }
+.admin__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.admin__busca {
+  flex: 1 1 170px;
+  min-width: 0;
+  padding: 10px 13px;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-sm);
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--texto);
+  background: var(--branco);
+}
+.admin__busca:focus {
+  outline: none;
+  border-color: var(--azul);
+  box-shadow: 0 0 0 3px rgba(11,95,255,.15);
+}
+.admin__sec {
+  flex: 0 0 auto;
+  padding: 10px 12px;
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-sm);
+  font-size: 15px;
+  font-family: inherit;
+  color: var(--texto);
+  background: var(--branco);
+}
+.check--compact { font-size: 13px; white-space: nowrap; }
+.admin__tools-hint { margin: 0 0 10px; font-size: 13px; color: var(--texto-suave); }
+.link {
+  border: 0;
+  background: none;
+  color: var(--azul);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+.link:hover { text-decoration: underline; }
+.field__help { display: block; color: var(--texto-suave); font-size: 12px; font-weight: 500; }
 
 /* ---------- Impressao personalizada ---------- */
 .steps {
@@ -1025,7 +1102,27 @@ a:focus-visible {
 /* ---------- Admin: edição ---------- */
 .admin__row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .admin__checks { display: flex; flex-wrap: wrap; gap: 8px 20px; }
-.admin__item-actions { display: flex; align-items: center; gap: 6px; }
+.admin__item-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.btn-star,
+.btn-dup {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+  background: var(--branco);
+  color: var(--texto-suave);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.btn-star:hover,
+.btn-dup:hover { background: var(--azul-suave); border-color: var(--azul-claro); color: var(--azul); }
+.btn-star--on { color: #c98a00; border-color: #ffe08a; background: #fff8e1; }
+.btn-star--on:hover { color: #8a5a00; }
 .btn-editar {
   border: 1px solid var(--azul);
   background: var(--branco);
