@@ -12,21 +12,21 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.1" />
-  <script>window.__APP_VERSION = "2026-10-12.1";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.2" />
+  <script>window.__APP_VERSION = "2026-10-12.2";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.1"></script>
-  <script src="data/maintenance.js?v=2026-10-12.1"></script>
+  <script src="data/products.js?v=2026-10-12.2"></script>
+  <script src="data/maintenance.js?v=2026-10-12.2"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.1"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.2"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -41,6 +41,22 @@
     function irPara(id) {
       const el = document.getElementById(id);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    /* Fecha o modal ao clicar no fundo, sem fechar quando o usuario esta
+       selecionando/copiando texto (evita fechar ao dar Ctrl+C). */
+    function useOverlayClose(onClose) {
+      const pressOnOverlay = React.useRef(false);
+      return {
+        onMouseDown: (e) => { pressOnOverlay.current = (e.target === e.currentTarget); },
+        onClick: (e) => {
+          if (e.target !== e.currentTarget) return;
+          if (!pressOnOverlay.current) return;
+          const sel = window.getSelection && window.getSelection();
+          if (sel && String(sel).length > 0) return;
+          onClose();
+        }
+      };
     }
 
     function gerarMiniatura(img, maxLado, qualidade) {
@@ -253,8 +269,9 @@
       const total = preco && frete ? preco + frete.valor : null;
       const cepIncompleto = cep.replace(/\D/g, "").length === 8 && !frete;
       const esgotado = !!produto.esgotado;
+      const overlayProps = useOverlayClose(onClose);
 
-      return h("div", { className: "modal-overlay", onClick: onClose },
+      return h("div", Object.assign({ className: "modal-overlay" }, overlayProps),
         h("div", { className: "modal modal--produto", onClick: (e) => e.stopPropagation() },
           h("button", { type: "button", className: "modal__close", onClick: onClose, "aria-label": "Fechar" }, "×"),
           h("div", { className: "produto" },
@@ -602,6 +619,7 @@
       const [senha, setSenha] = React.useState("");
       const [erro, setErro] = React.useState("");
       const [carregando, setCarregando] = React.useState(false);
+      const overlayProps = useOverlayClose(onClose);
 
       const entrar = async (e) => {
         e.preventDefault();
@@ -620,7 +638,7 @@
         }
       };
 
-      return h("div", { className: "modal-overlay", onClick: onClose },
+      return h("div", Object.assign({ className: "modal-overlay" }, overlayProps),
         h("form", { className: "modal admin-login", onClick: (e) => e.stopPropagation(), onSubmit: entrar },
           h("button", { type: "button", className: "modal__close", onClick: onClose, "aria-label": "Fechar" }, "×"),
           h("h2", { className: "modal__title" }, "Área do administrador"),
@@ -677,6 +695,7 @@
       const [erros, setErros] = React.useState({});
       const [saving, setSaving] = React.useState(false);
       const [importando, setImportando] = React.useState(false);
+      const overlayProps = useOverlayClose(onClose);
 
       React.useEffect(() => {
         const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -807,7 +826,7 @@
         }
       };
 
-      return h("div", { className: "modal-overlay", onClick: onClose },
+      return h("div", Object.assign({ className: "modal-overlay" }, overlayProps),
         h("div", { className: "modal admin", onClick: (e) => e.stopPropagation() },
           h("button", { type: "button", className: "modal__close", onClick: onClose, "aria-label": "Fechar" }, "×"),
           h("div", { className: "admin__head" },
