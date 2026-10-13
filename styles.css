@@ -981,6 +981,8 @@ a { color: inherit; text-decoration: none; }
   .hero__inner { padding: 52px 20px 62px; }
   .custom { grid-template-columns: 1fr; }
   .produto { grid-template-columns: 1fr; }
+  .modal--produto { padding-top: 54px; }
+  .modal--produto .modal__close { top: 10px; right: 10px; }
   .admin__row { grid-template-columns: 1fr; }
 }
 @media (max-width: 520px) {
