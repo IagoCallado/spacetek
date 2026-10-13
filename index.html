@@ -13,21 +13,21 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.6" />
-  <script>window.__APP_VERSION = "2026-10-12.6";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.7" />
+  <script>window.__APP_VERSION = "2026-10-12.7";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.6"></script>
-  <script src="data/maintenance.js?v=2026-10-12.6"></script>
+  <script src="data/products.js?v=2026-10-12.7"></script>
+  <script src="data/maintenance.js?v=2026-10-12.7"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.6"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.7"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -157,7 +157,15 @@
     /* ---------- Header ---------- */
     function Header({ cartCount, onOpenCart, onInicio, onVerTodos, onQuemSomos, onToggleMenu, onLogoAdmin }) {
       const [logoOk, setLogoOk] = React.useState(true);
+      const [scrol, setScrol] = React.useState(false);
       const clickTimer = React.useRef(null);
+
+      React.useEffect(() => {
+        const onS = () => setScrol(window.scrollY > 6);
+        onS();
+        window.addEventListener("scroll", onS, { passive: true });
+        return () => window.removeEventListener("scroll", onS);
+      }, []);
 
       const logoClick = (e) => {
         e.preventDefault();
@@ -170,7 +178,7 @@
         }
       };
 
-      return h("header", { className: "header" },
+      return h("header", { className: "header" + (scrol ? " header--scroll" : "") },
         h("div", { className: "header__inner" },
           h("div", { className: "header__left" },
             h("button", { className: "nav__menu", onClick: onToggleMenu, "aria-label": "Abrir menu" }, h(MenuIcon, null)),
@@ -319,7 +327,7 @@
     }
 
     /* ---------- Catalogo geral ---------- */
-    function Catalog({ produtos, onAdd, cart, showAll, onToggleAll, filtro, onLimparFiltro, onOpen }) {
+    function Catalog({ produtos, onAdd, cart, showAll, onToggleAll, filtro, onOpen, categorias, onFiltro }) {
       const VISIVEL = 6;
       const lista = (showAll || filtro) ? produtos : produtos.slice(0, VISIVEL);
       return h("section", { id: "catalogo", className: "section" },
@@ -327,23 +335,24 @@
           h("div", null,
             h("h2", { className: "section__title" }, "Catálogo de Impressões"),
             h("p", { className: "section__sub" }, "Peças sob demanda — escolha e monte seu orçamento.")
-          )
+          ),
+          (!filtro && produtos.length > VISIVEL) && h("button",
+            { className: "btn btn--ghost btn--sm", onClick: onToggleAll },
+            showAll ? "Ver menos" : "Ver todos")
         ),
-        filtro && h("div", { className: "filtro" },
-          h("span", { className: "filtro__chip" }, "Categoria: " + filtro,
-            h("button", { className: "filtro__x", onClick: onLimparFiltro, "aria-label": "Limpar filtro" }, "×")
-          )
+        categorias.length > 0 && h("div", { className: "filtro__cats" },
+          h("button", { className: "menu__cat" + (!filtro ? " menu__cat--ativo" : ""),
+            onClick: () => onFiltro("") }, "Todas"),
+          categorias.map((c) => h("button", { key: c,
+            className: "menu__cat" + (filtro === c ? " menu__cat--ativo" : ""),
+            onClick: () => onFiltro(c) }, c))
         ),
         produtos.length === 0
           ? h("p", { className: "drawer__empty" }, "Nenhuma peça encontrada" + (filtro ? " nesta categoria." : "."))
           : h("div", { className: "grid" },
               lista.map((p) => h(ProductCard, { key: p.id, produto: p, onAdd: onAdd, onOpen: onOpen,
                 qtd: cart[p.id] ? cart[p.id].qtd : 0 }))
-            ),
-        (!filtro && produtos.length > VISIVEL) && h("div", { className: "section__more" },
-          h("button", { className: "btn btn--ghost", onClick: onToggleAll },
-            showAll ? "Ver menos" : "Ver mais")
-        )
+            )
       );
     }
 
@@ -950,15 +959,27 @@
     }
 
     /* ---------- Hero ---------- */
-    function Hero() {
+    function Hero({ destaques }) {
       return h("section", { id: "inicio", className: "hero" },
         h("div", { className: "hero__inner" },
-          h("span", { className: "hero__tag" }, "Impressão 3D sob demanda"),
-          h("h1", { className: "hero__title" }, "Sua ideia, impressa em ", h("span", null, "3D"), "."),
-          h("p", { className: "hero__text" }, "Peças personalizadas, decoração e utilitários impressos com qualidade e acabamento profissional."),
-          h("div", { className: "hero__actions" },
-            h("button", { className: "btn btn--primary", onClick: () => irPara("catalogo") }, "Ver catálogo"),
-            h("button", { className: "btn btn--outline", onClick: () => irPara("lancamentos") }, "Lançamentos")
+          h("div", { className: "hero__grid" },
+            h("div", null,
+              h("span", { className: "hero__tag" }, "Impressão 3D sob demanda"),
+              h("h1", { className: "hero__title" }, "Sua ideia, impressa em ", h("span", null, "3D"), "."),
+              h("p", { className: "hero__text" }, "Peças personalizadas, decoração e utilitários impressos com qualidade e acabamento profissional."),
+              h("div", { className: "hero__actions" },
+                h("button", { className: "btn btn--primary", onClick: () => irPara("catalogo") }, "Ver catálogo"),
+                h("button", { className: "btn btn--outline", onClick: () => irPara("lancamentos") }, "Lançamentos")
+              )
+            ),
+            (destaques && destaques.length > 0) && h("div", { className: "hero__visual" },
+              destaques.map((p) => h("div", { key: p.id, className: "hero__card" },
+                h("img", { src: p.imagem, alt: p.nome }),
+                h("span", { className: "hero__card-name" }, p.nome),
+                h("span", { className: "hero__card-price" },
+                  precoDe(p) ? formatBRL(precoDe(p)) : "Sob consulta")
+              ))
+            )
           )
         )
       );
@@ -1037,10 +1058,40 @@
     }
 
     /* ---------- Footer ---------- */
-    function Footer() {
+    function Footer({ onNav }) {
+      const url = "https://wa.me/" + window.WHATSAPP_NUMBER +
+        "?text=" + encodeURIComponent("Olá SpaceTek! Gostaria de saber mais sobre as impressões 3D.");
+      const links = [
+        ["Início", "inicio"],
+        ["Catálogo", "catalogo"],
+        ["Lançamentos", "lancamentos"],
+        ["Quem somos", "sobre"],
+        ["Impressão personalizada", "personalizado"]
+      ];
       return h("footer", { className: "footer" },
-        h("p", null, h("strong", null, "SpaceTek"), " — Impressão 3D sob demanda © ", new Date().getFullYear()),
-        h("p", null, "Solicite seu orçamento pelo WhatsApp.")
+        h("div", { className: "footer__inner" },
+          h("div", { className: "footer__brand" },
+            h("div", { className: "footer__logo" }, "Space", h("span", null, "Tek")),
+            h("p", null, "Ateliê de impressão 3D sob demanda. Do protótipo ao acabamento, com materiais de qualidade."),
+            h("p", null, "Envio para todo o Brasil.")
+          ),
+          h("div", null,
+            h("h3", null, "Navegação"),
+            h("nav", { className: "footer__nav", "aria-label": "Rodapé" },
+              links.map(([rot, alvo]) => h("button", { key: alvo, onClick: () => onNav(alvo) }, rot))
+            )
+          ),
+          h("div", { className: "footer__contact" },
+            h("h3", null, "Contato"),
+            h("p", null, "Solicite seu orçamento pelo WhatsApp."),
+            h("a", { className: "btn btn--primary btn--sm footer__btn", href: url,
+              target: "_blank", rel: "noopener" },
+              h(WhatsAppIcon, { width: 16, height: 16 }), "Falar no WhatsApp")
+          )
+        ),
+        h("div", { className: "footer__copy" },
+          h("p", null, h("strong", null, "SpaceTek"), " — Impressão 3D sob demanda © ", new Date().getFullYear())
+        )
       );
     }
 
@@ -1145,10 +1196,12 @@
       const lancamentos = todos.filter((p) => p.secao === "lancamentos");
       const categorias = [];
       todos.forEach((p) => { if (p.categoria && categorias.indexOf(p.categoria) < 0) categorias.push(p.categoria); });
+      const destaques = (lancamentos.length > 0 ? lancamentos : catalogo).slice(0, 3);
 
       const catalogoFiltrado = filtro ? catalogo.filter((p) => p.categoria === filtro) : catalogo;
 
       const limparFiltro = () => setFiltro("");
+      const onFiltro = (cat) => { setFiltro(cat); setShowAll(true); };
       const irCategoria = (cat) => {
         setFiltro(cat);
         setShowAll(true);
@@ -1167,16 +1220,16 @@
           onLogoAdmin: () => setAdminOpen(true)
         }),
         h("main", null,
-          h(Hero, null),
+          h(Hero, { destaques: destaques }),
           h(Catalog, { produtos: catalogoFiltrado, onAdd: addItem, cart: cart,
             showAll: showAll, onToggleAll: () => setShowAll((v) => !v),
-            filtro: filtro, onLimparFiltro: limparFiltro, onOpen: setSelected }),
+            filtro: filtro, onOpen: setSelected, categorias: categorias, onFiltro: onFiltro }),
           lancamentos.length > 0 && h(Lancamentos, { produtos: lancamentos, onAdd: addItem, cart: cart,
             onOpen: setSelected }),
           h(Personalizado, null),
           h(About, null)
         ),
-        h(Footer, null),
+        h(Footer, { onNav: irPara }),
         h(WhatsAppFloat, null),
         h(MenuDrawer, {
           open: menuOpen,
