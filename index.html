@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0A2540" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
@@ -12,21 +13,21 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.3" />
-  <script>window.__APP_VERSION = "2026-10-12.3";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.4" />
+  <script>window.__APP_VERSION = "2026-10-12.4";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.3"></script>
-  <script src="data/maintenance.js?v=2026-10-12.3"></script>
+  <script src="data/products.js?v=2026-10-12.4"></script>
+  <script src="data/maintenance.js?v=2026-10-12.4"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.3"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.4"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -195,7 +196,7 @@
     }
 
     /* ---------- Menu lateral ---------- */
-    function MenuDrawer({ open, onClose, onPersonalizado, categorias, onCategoria }) {
+    function MenuDrawer({ open, onClose, onInicio, onVerTodos, onQuemSomos, onPersonalizado, categorias, onCategoria }) {
       React.useEffect(() => {
         const onKey = (e) => { if (e.key === "Escape") onClose(); };
         if (open) document.addEventListener("keydown", onKey);
@@ -211,6 +212,9 @@
             h("button", { className: "drawer__close", onClick: onClose, "aria-label": "Fechar" }, "×")
           ),
           h("div", { className: "drawer__body" },
+            h("button", { className: "menu__item", onClick: onInicio }, "Início"),
+            h("button", { className: "menu__item", onClick: onVerTodos }, "Ver todos os produtos"),
+            h("button", { className: "menu__item", onClick: onQuemSomos }, "Quem somos"),
             h("button", { className: "menu__item", onClick: onPersonalizado }, "Impressão personalizada"),
             h("p", { className: "menu__heading" }, "Pesquisar por categoria"),
             categorias.length === 0
@@ -1102,6 +1106,13 @@
         });
       }, [produtosFs]);
 
+      /* Trava a rolagem do fundo enquanto um drawer/modal estiver aberto. */
+      React.useEffect(() => {
+        const aberto = cartOpen || menuOpen || adminOpen || !!selected;
+        document.body.classList.toggle("no-scroll", aberto);
+        return () => document.body.classList.remove("no-scroll");
+      }, [cartOpen, menuOpen, adminOpen, selected]);
+
       const addItem = (produto) => {
         if (produto.esgotado) return;
         setCart((prev) => {
@@ -1170,6 +1181,9 @@
         h(MenuDrawer, {
           open: menuOpen,
           onClose: () => setMenuOpen(false),
+          onInicio: () => { setMenuOpen(false); limparFiltro(); irPara("inicio"); },
+          onVerTodos: () => { setMenuOpen(false); limparFiltro(); setShowAll(true); irPara("catalogo"); },
+          onQuemSomos: () => { setMenuOpen(false); irPara("sobre"); },
           onPersonalizado: () => { setMenuOpen(false); irPara("personalizado"); },
           categorias: categorias,
           onCategoria: irCategoria
