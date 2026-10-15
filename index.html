@@ -13,21 +13,21 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.9" />
-  <script>window.__APP_VERSION = "2026-10-12.9";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.10" />
+  <script>window.__APP_VERSION = "2026-10-12.10";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.9"></script>
-  <script src="data/maintenance.js?v=2026-10-12.9"></script>
+  <script src="data/products.js?v=2026-10-12.10"></script>
+  <script src="data/maintenance.js?v=2026-10-12.10"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.9"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.10"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -782,13 +782,13 @@
           peso: pesoNum,
           dimensoes: dimensoes.trim()
         };
+        dados.imagem = imagem || "assets/images/p1.svg";
         setSaving(true);
         try {
           if (editando) {
             await window.fbDb.collection("produtos").doc(editando).update(dados);
             mostrarMsg("Peça atualizada.", false);
           } else {
-            dados.imagem = imagem || "assets/images/p1.svg";
             dados.ordem = Date.now();
             await window.fbDb.collection("produtos").add(dados);
             mostrarMsg("Peça adicionada com sucesso.", false);
@@ -1386,7 +1386,7 @@
         ? marcados.slice(0, 3)
         : (lancamentos.length > 0 ? lancamentos : catalogo).slice(0, 3);
 
-      const catalogoFiltrado = filtro ? catalogo.filter((p) => p.categoria === filtro) : catalogo;
+      const catalogoFiltrado = filtro ? todos.filter((p) => p.categoria === filtro) : catalogo;
 
       const limparFiltro = () => setFiltro("");
       const onFiltro = (cat) => { setFiltro(cat); setShowAll(true); };
@@ -1412,7 +1412,7 @@
           h(Catalog, { produtos: catalogoFiltrado, onAdd: addItem, cart: cart,
             showAll: showAll, onToggleAll: () => setShowAll((v) => !v),
             filtro: filtro, onOpen: setSelected, categorias: categorias, onFiltro: onFiltro }),
-          lancamentos.length > 0 && h(Lancamentos, { produtos: lancamentos, onAdd: addItem, cart: cart,
+          lancamentos.length > 0 && !filtro && h(Lancamentos, { produtos: lancamentos, onAdd: addItem, cart: cart,
             onOpen: setSelected }),
           h(Personalizado, null),
           h(About, null)
