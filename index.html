@@ -13,21 +13,21 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.10" />
-  <script>window.__APP_VERSION = "2026-10-12.10";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.11" />
+  <script>window.__APP_VERSION = "2026-10-12.11";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.10"></script>
-  <script src="data/maintenance.js?v=2026-10-12.10"></script>
+  <script src="data/products.js?v=2026-10-12.11"></script>
+  <script src="data/maintenance.js?v=2026-10-12.11"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.10"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.11"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -114,6 +114,16 @@
     function cmpProd(a, b) {
       if ((!!a.destaque) !== (!!b.destaque)) return (!!b.destaque) ? 1 : -1;
       return (Number(a.ordem) || 0) - (Number(b.ordem) || 0);
+    }
+
+    /* Assinatura dos campos que importam no carrinho. Se mudar, o item antigo
+       e descartado (evita orcar com dados velhos). Ignora ordem/destaque/id/qtd. */
+    function assinaturaProduto(p) {
+      if (!p) return "";
+      return [
+        p.nome, p.categoria, p.secao || "catalogo", p.preco, p.descricao,
+        p.filamento, p.peso, p.dimensoes, p.imagem, !!p.novo, !!p.esgotado
+      ].join("|");
     }
 
     function formatBRL(v) {
@@ -1323,7 +1333,8 @@
         } catch (e) { setCfg({}); }
         return () => { if (unsub) unsub(); };
       }, []);
-      /* Remove do carrinho itens marcados como esgotados no banco. */
+      /* Sincroniza o carrinho com o banco: descarta itens esgotados, removidos
+         do catalogo ou que tiveram seus dados alterados (evita erro/valor velho). */
       React.useEffect(() => {
         if (!produtosFs || produtosFs.length === 0) return;
         setCart((prev) => {
@@ -1332,9 +1343,13 @@
           let mudou = false;
           const novo = {};
           Object.keys(prev).forEach((id) => {
+            const item = prev[id];
             const prod = mapa[id];
-            if (prod && prod.esgotado) { mudou = true; return; }
-            novo[id] = prev[id];
+            if (!prod || prod.esgotado || assinaturaProduto(prod) !== assinaturaProduto(item)) {
+              mudou = true;
+              return;
+            }
+            novo[id] = item;
           });
           return mudou ? novo : prev;
         });
