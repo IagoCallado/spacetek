@@ -13,21 +13,21 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.12" />
-  <script>window.__APP_VERSION = "2026-10-12.12";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.13" />
+  <script>window.__APP_VERSION = "2026-10-12.13";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.12"></script>
-  <script src="data/maintenance.js?v=2026-10-12.12"></script>
+  <script src="data/products.js?v=2026-10-12.13"></script>
+  <script src="data/maintenance.js?v=2026-10-12.13"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.12"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.13"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -210,7 +210,49 @@
       if (!frete) return "informe o CEP";
       if (frete.aCombinar) return "a combinar";
       if (frete.gratis) return "Grátis";
+      if (frete.real) {
+        const nome = [frete.transportadora, frete.servico].filter(Boolean).join(" ");
+        return formatBRL(frete.valor) + (nome ? " • " + nome : "") +
+          (frete.prazo != null ? " • " + frete.prazo + " dias" : "");
+      }
       return formatBRL(frete.valor) + (frete.regiao ? " • " + frete.regiao : "");
+    }
+
+    /* Cotacao real via Cloudflare Worker (endpoint configurado no painel).
+       Retorna array de opcoes ou null (sem endpoint / falha / sem medidas). */
+    async function cotarFreteRemoto(cep, itens) {
+      const c = window.FRETE_CONFIG || {};
+      const base = String(c.endpoint || "").replace(/\/+$/, "");
+      const destino = (cep || "").replace(/\D/g, "");
+      if (!base || destino.length !== 8) return null;
+      const produtos = (itens || []).map((i) => ({
+        id: i.id || i.nome,
+        width: Number(i.largura) || 0,
+        height: Number(i.altura) || 0,
+        length: Number(i.comprimento) || 0,
+        weight: pesoKgDe(i) || 0,
+        insurance_value: precoDe(i) || 0,
+        quantity: i.qtd || 1
+      })).filter((p) => p.weight > 0 && p.width > 0 && p.height > 0 && p.length > 0);
+      if (!produtos.length) return null;
+      try {
+        const resp = await fetch(base + "/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cepOrigem: (c.cepOrigem || "").replace(/\D/g, ""), cep: destino, items: produtos })
+        });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const ops = data && data.opcoes;
+        if (!Array.isArray(ops) || !ops.length) return null;
+        return ops.map((o, idx) => ({
+          id: o.id != null ? String(o.id) : String(idx),
+          servico: o.servico || o.name || "Frete",
+          empresa: o.empresa || o.company || "",
+          preco: Number(o.preco != null ? o.preco : o.price) || 0,
+          prazo: o.prazo != null ? o.prazo : (o.delivery_time != null ? o.delivery_time : null)
+        }));
+      } catch (e) { return null; }
     }
 
     /* ---------- Icones ---------- */
@@ -478,18 +520,39 @@
       const [cepStatus, setCepStatus] = React.useState("idle");
       const [cepMsg, setCepMsg] = React.useState("");
       const [cepValidado, setCepValidado] = React.useState(false);
+      const [opcoes, setOpcoes] = React.useState(null);
+      const [opcaoSel, setOpcaoSel] = React.useState(null);
+      const [cotando, setCotando] = React.useState(false);
+      const [cotacaoErro, setCotacaoErro] = React.useState(false);
       const cepTimer = React.useRef(null);
 
       const semPreco = items.some((i) => !precoDe(i));
       const subtotal = items.reduce((s, i) => s + (precoDe(i) ? precoDe(i) * i.qtd : 0), 0);
-      const frete = calcularFrete(cep, items, subtotal);
+      const estatico = calcularFrete(cep, items, subtotal);
+      const gratis = !!(estatico && estatico.gratis);
+      const temSemMedidas = !!(estatico && estatico.aCombinar);
+      const endpoint = (window.FRETE_CONFIG || {}).endpoint || "";
+      const podeReal = !!endpoint && !!opcoes && opcoes.length > 0 && !gratis && !temSemMedidas && !semPreco;
+      const opcaoSelObj = podeReal ? (opcoes.find((o) => o.id === opcaoSel) || opcoes[0]) : null;
+      const frete = podeReal
+        ? { valor: opcaoSelObj.preco, prazo: opcaoSelObj.prazo, transportadora: opcaoSelObj.empresa,
+            servico: opcaoSelObj.servico, real: true, regiao: estatico.regiao }
+        : estatico;
       const freteValor = frete && !frete.aCombinar ? (frete.gratis ? 0 : frete.valor) : null;
       const total = subtotal + (freteValor || 0);
 
-      const cepResumo = semPreco ? "a combinar"
-        : (frete ? freteTexto(frete) : "informe o CEP");
       const totalResumo = semPreco ? "a combinar"
         : (freteValor == null ? "a combinar" : formatBRL(total));
+
+      const cotarRemoto = async (cepDigits) => {
+        if (!endpoint) return;
+        setCotando(true);
+        setCotacaoErro(false);
+        const ops = await cotarFreteRemoto(cepDigits, items);
+        setCotando(false);
+        if (ops && ops.length) { setOpcoes(ops); setOpcaoSel(ops[0].id); }
+        else { setOpcoes(null); setCotacaoErro(true); }
+      };
 
       const buscarCep = async (valor) => {
         const digits = valor.replace(/\D/g, "");
@@ -519,6 +582,7 @@
           setCepStatus("ok");
           setCepMsg("CEP válido: " + (data.localidade ? data.localidade + "/" + data.uf : data.uf));
           setCepValidado(true);
+          cotarRemoto(digits);
         } catch (err) {
           setCepStatus("fail");
           setCepMsg("Não foi possível validar o CEP agora. Verifique sua conexão.");
@@ -532,6 +596,9 @@
         setCepValidado(false);
         setCepStatus("idle");
         setCepMsg("");
+        setOpcoes(null);
+        setOpcaoSel(null);
+        setCotacaoErro(false);
         if (cepTimer.current) clearTimeout(cepTimer.current);
         if (fmt.replace(/\D/g, "").length === 8) {
           cepTimer.current = setTimeout(() => buscarCep(fmt), 450);
@@ -612,6 +679,18 @@
             onChange: (e) => onChangeCep(e.target.value), onBlur: onBlurCep }),
           cepMsg && h("small", { className: "field__hint field__hint--" + cepStatus }, cepMsg)
         ),
+        cotando && h("p", { className: "frete-opcoes__status" }, "Calculando opções de frete..."),
+        gratis && h("p", { className: "frete-opcoes__status frete-opcoes__status--ok" }, "Frete grátis para este pedido."),
+        podeReal && h("div", { className: "frete-opcoes" },
+          h("p", { className: "frete-opcoes__titulo" }, "Escolha o frete:"),
+          opcoes.map((o) => h("label", { key: o.id, className: "frete-opcao" + (opcaoSelObj && opcaoSelObj.id === o.id ? " frete-opcao--sel" : "") },
+            h("input", { type: "radio", name: "frete", checked: !!(opcaoSelObj && opcaoSelObj.id === o.id),
+              onChange: () => setOpcaoSel(o.id) }),
+            h("span", { className: "frete-opcao__nome" }, [o.empresa, o.servico].filter(Boolean).join(" · ") || "Frete"),
+            h("span", { className: "frete-opcao__preco" }, formatBRL(o.preco) + (o.prazo != null ? " · " + o.prazo + " dias" : ""))
+          ))
+        ),
+        cotacaoErro && h("p", { className: "frete-opcoes__status" }, "Não foi possível cotar agora; usando valor estimado."),
         campo("Endereço *", endereco, setEndereco, "Número e complemento (rua/cidade preenchidos pelo CEP)"),
         campo("Telefone / E-mail (opcional)", contato, setContato, "(00) 00000-0000 ou email@exemplo.com"),
         h("label", { className: "field" },
@@ -802,6 +881,7 @@
       const [fGratis, setFGratis] = React.useState("");
       const [fPesoIncl, setFPesoIncl] = React.useState("");
       const [fPesoExc, setFPesoExc] = React.useState("");
+      const [fEndpoint, setFEndpoint] = React.useState("");
       const [fTab, setFTab] = React.useState(() => tabelaParaArray(window.FRETE_TABELA));
 
       React.useEffect(() => {
@@ -810,6 +890,7 @@
         setFGratis(f.freteGratis ? String(f.freteGratis) : "");
         setFPesoIncl(f.pesoIncluidoKg ? String(f.pesoIncluidoKg) : "");
         setFPesoExc(f.valorKgExcedente ? String(f.valorKgExcedente) : "");
+        setFEndpoint(f.endpoint || "");
         setFTab(Array.isArray(f.tabelaFrete) && f.tabelaFrete.length === 10
           ? f.tabelaFrete.map((v) => (v == null ? "" : String(v)))
           : tabelaParaArray(window.FRETE_TABELA));
@@ -1026,6 +1107,7 @@
           freteGratis: String(fGratis).trim() === "" ? 0 : num(fGratis),
           pesoIncluidoKg: String(fPesoIncl).trim() === "" ? 0 : num(fPesoIncl),
           valorKgExcedente: String(fPesoExc).trim() === "" ? 0 : num(fPesoExc),
+          endpoint: String(fEndpoint).trim(),
           tabelaFrete: fTab.map((v) => num(v))
         };
         try {
@@ -1230,6 +1312,15 @@
                 ),
                 h("p", { className: "field__help" },
                   "Tabela por região (1º dígito do CEP). Usada como estimativa de frete."),
+                h("label", { className: "field" },
+                  h("span", null, "Endpoint de cotação real (Worker)"),
+                  h("input", { value: fEndpoint, placeholder: "https://spacetek-frete.SUA-CONTA.workers.dev",
+                    onChange: (e) => setFEndpoint(e.target.value) }),
+                  h("small", { className: "field__help" },
+                    fEndpoint.trim()
+                      ? "Cotação real ativa. Sem resposta, usa a estimativa da tabela."
+                      : "Opcional. Preencha após publicar o Worker para ativar a cotação real.")
+                ),
                 h("div", { className: "admin__frete-tab" },
                   fTab.map((v, i) => h("label", { key: i, className: "field field--mini" },
                     h("span", null, REGIOES_CEP[i]),
