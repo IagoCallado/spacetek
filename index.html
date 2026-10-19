@@ -13,21 +13,21 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.11" />
-  <script>window.__APP_VERSION = "2026-10-12.11";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.12" />
+  <script>window.__APP_VERSION = "2026-10-12.12";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.11"></script>
-  <script src="data/maintenance.js?v=2026-10-12.11"></script>
+  <script src="data/products.js?v=2026-10-12.12"></script>
+  <script src="data/maintenance.js?v=2026-10-12.12"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.11"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.12"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -104,6 +104,8 @@
       7: "DF/GO/MT/MS/TO/RO/AC", 8: "PR/SC", 9: "RS"
     };
     window.FRETE_TABELA = { 0: 15, 1: 15, 2: 20, 3: 20, 4: 32, 5: 32, 6: 35, 7: 28, 8: 22, 9: 22 };
+    /* Config de frete do painel (gravada em produtos/_site) — preenchida pelo App. */
+    window.FRETE_CONFIG = null;
 
     function precoDe(produto) {
       const v = produto && produto.preco;
@@ -122,7 +124,8 @@
       if (!p) return "";
       return [
         p.nome, p.categoria, p.secao || "catalogo", p.preco, p.descricao,
-        p.filamento, p.peso, p.dimensoes, p.imagem, !!p.novo, !!p.esgotado
+        p.filamento, p.peso, p.comprimento, p.largura, p.altura, p.dimensoes,
+        p.imagem, !!p.novo, !!p.esgotado
       ].join("|");
     }
 
@@ -135,13 +138,79 @@
       return d.length > 5 ? d.slice(0, 5) + "-" + d.slice(5) : d;
     }
 
-    function calcularFrete(cep) {
+    /* Extrai medidas (cm) de um texto livre, ex.: "10 x 5 x 8 cm" -> "10","5","8". */
+    function parseDimensoes(txt) {
+      const nums = String(txt || "").match(/\d+(?:[.,]\d+)?/g) || [];
+      return { comprimento: nums[0] || "", largura: nums[1] || "", altura: nums[2] || "" };
+    }
+
+    function dimTexto(c, l, a) {
+      return (c !== "" && l !== "" && a !== "") ? (c + " x " + l + " x " + a + " cm") : "";
+    }
+
+    /* Peso do produto em kg (o cadastro guarda gramas). */
+    function pesoKgDe(p) {
+      const g = Number(p && p.peso);
+      return isFinite(g) && g > 0 ? g / 1000 : null;
+    }
+
+    /* Produto pronto para cotar frete real: precisa de peso e 3 dimensoes. */
+    function temMedidasFrete(p) {
+      return !!(p && Number(p.comprimento) > 0 && Number(p.largura) > 0 &&
+        Number(p.altura) > 0 && pesoKgDe(p) != null);
+    }
+
+    function tabelaFreteAtual() {
+      const c = window.FRETE_CONFIG;
+      if (c && Array.isArray(c.tabelaFrete) && c.tabelaFrete.length === 10) return c.tabelaFrete;
+      return window.FRETE_TABELA;
+    }
+
+    /* Converte a tabela (objeto por dígito ou array) em array de strings [0..9]. */
+    function tabelaParaArray(t) {
+      const arr = [];
+      for (let i = 0; i < 10; i++) arr.push(t && t[i] != null ? String(t[i]) : "");
+      return arr;
+    }
+
+    /* Frete estimado (tabela por regiao) com as regras do painel.
+       itens: lista do carrinho (usa peso/qtd). subtotal: para frete gratis.
+       Retorna null (CEP incompleto), { aCombinar:true }, { gratis:true } ou { valor, regiao }. */
+    function calcularFrete(cep, itens, subtotal) {
       const d = (cep || "").replace(/\D/g, "");
       if (d.length !== 8) return null;
       const digito = parseInt(d[0], 10);
-      const valor = window.FRETE_TABELA[digito];
-      if (valor == null) return null;
-      return { valor: valor, regiao: REGIOES_CEP[digito] || "" };
+      const regiao = REGIOES_CEP[digito] || "";
+      const c = window.FRETE_CONFIG || {};
+
+      if (itens && itens.length && itens.some((i) => !temMedidasFrete(i))) {
+        return { aCombinar: true, valor: null, regiao: regiao };
+      }
+
+      const limite = Number(c.freteGratis) || 0;
+      if (limite > 0 && subtotal != null && subtotal >= limite) {
+        return { valor: 0, gratis: true, regiao: regiao };
+      }
+
+      let extra = 0;
+      if (itens && itens.length) {
+        const kg = itens.reduce((s, i) => s + (pesoKgDe(i) || 0) * (i.qtd || 1), 0);
+        const incluso = Number(c.pesoIncluidoKg) || 0;
+        const porKg = Number(c.valorKgExcedente) || 0;
+        if (kg > incluso && porKg > 0) extra = (kg - incluso) * porKg;
+      }
+
+      const base = Number(tabelaFreteAtual()[digito]);
+      if (!isFinite(base)) return null;
+      return { valor: Math.round((base + extra) * 100) / 100, regiao: regiao, estimado: true };
+    }
+
+    /* Texto do frete para exibir (usado em sacola/orcamento). */
+    function freteTexto(frete) {
+      if (!frete) return "informe o CEP";
+      if (frete.aCombinar) return "a combinar";
+      if (frete.gratis) return "Grátis";
+      return formatBRL(frete.valor) + (frete.regiao ? " • " + frete.regiao : "");
     }
 
     /* ---------- Icones ---------- */
@@ -278,8 +347,9 @@
     /* ---------- Detalhe do produto (modal) ---------- */
     function ProdutoModal({ produto, onClose, onAdd }) {
       const [cep, setCep] = React.useState("");
-      const [frete, setFrete] = React.useState(null);
       const preco = precoDe(produto);
+      const frete = React.useMemo(() => calcularFrete(cep, [Object.assign({}, produto, { qtd: 1 })], preco || 0),
+        [cep, produto, preco]);
 
       React.useEffect(() => {
         const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -287,13 +357,9 @@
         return () => document.removeEventListener("keydown", onKey);
       }, [onClose]);
 
-      const onCep = (v) => {
-        const fmt = formatCep(v);
-        setCep(fmt);
-        setFrete(calcularFrete(fmt));
-      };
+      const onCep = (v) => setCep(formatCep(v));
 
-      const total = preco && frete ? preco + frete.valor : null;
+      const total = (preco && frete && !frete.aCombinar) ? preco + (frete.gratis ? 0 : frete.valor) : null;
       const cepIncompleto = cep.replace(/\D/g, "").length === 8 && !frete;
       const esgotado = !!produto.esgotado;
       const overlayProps = useOverlayClose(onClose);
@@ -325,9 +391,10 @@
                   h("input", { value: cep, placeholder: "00000-000", inputMode: "numeric",
                     onChange: (e) => onCep(e.target.value) })
                 ),
-                frete && h("p", { className: "frete__res" }, "Frete para ",
+                frete && frete.aCombinar && h("p", { className: "frete__res" }, "Frete a combinar (fale com a gente)."),
+                frete && !frete.aCombinar && h("p", { className: "frete__res" }, "Frete para ",
                   h("strong", null, frete.regiao ? frete.regiao + " (" + cep + ")" : cep), ": ",
-                  h("strong", null, formatBRL(frete.valor))),
+                  h("strong", null, frete.gratis ? "Grátis" : formatBRL(frete.valor))),
                 cepIncompleto && h("p", { className: "frete__res frete__res--erro" }, "CEP inválido."),
                 total && h("p", { className: "frete__total" }, "Total com frete: ",
                   h("strong", null, formatBRL(total)))
@@ -415,13 +482,14 @@
 
       const semPreco = items.some((i) => !precoDe(i));
       const subtotal = items.reduce((s, i) => s + (precoDe(i) ? precoDe(i) * i.qtd : 0), 0);
-      const frete = calcularFrete(cep);
-      const total = subtotal + (frete ? frete.valor : 0);
+      const frete = calcularFrete(cep, items, subtotal);
+      const freteValor = frete && !frete.aCombinar ? (frete.gratis ? 0 : frete.valor) : null;
+      const total = subtotal + (freteValor || 0);
 
       const cepResumo = semPreco ? "a combinar"
-        : (frete ? formatBRL(frete.valor) : "informe o CEP");
+        : (frete ? freteTexto(frete) : "informe o CEP");
       const totalResumo = semPreco ? "a combinar"
-        : formatBRL(frete ? total : subtotal);
+        : (freteValor == null ? "a combinar" : formatBRL(total));
 
       const buscarCep = async (valor) => {
         const digits = valor.replace(/\D/g, "");
@@ -494,7 +562,7 @@
           linhas.push("- " + i.nome + " (x" + i.qtd + ")" + (p ? " — " + formatBRL(p * i.qtd) : " — Sob consulta"));
         });
         linhas.push("", "Subtotal: " + (semPreco ? "a combinar" : formatBRL(subtotal)));
-        linhas.push("Frete: " + (frete ? formatBRL(frete.valor) + (frete.regiao ? " (" + frete.regiao + ")" : "") : "a calcular"));
+        linhas.push("Frete: " + (frete ? freteTexto(frete) : "a calcular"));
         linhas.push("Total: " + totalResumo);
         if (obs.trim()) linhas.push("", "Observações: " + obs.trim());
         return linhas.join("\n");
@@ -584,8 +652,9 @@
       const totalItens = items.reduce((s, i) => s + i.qtd, 0);
       const semPreco = items.some((i) => !precoDe(i));
       const subtotal = items.reduce((s, i) => s + (precoDe(i) ? precoDe(i) * i.qtd : 0), 0);
-      const frete = calcularFrete(cep);
-      const total = subtotal + (frete ? frete.valor : 0);
+      const frete = calcularFrete(cep, items, subtotal);
+      const freteValor = frete && !frete.aCombinar ? (frete.gratis ? 0 : frete.valor) : null;
+      const total = subtotal + (freteValor || 0);
 
       return h(React.Fragment, null,
         h("div", { className: "overlay" + (open ? " overlay--show" : ""), onClick: onClose }),
@@ -628,11 +697,9 @@
                   onChange: (e) => onCep(e.target.value) })
               ),
               h("div", { className: "resumo__linha" }, h("span", null, "Frete"),
-                h("strong", null, frete
-                  ? formatBRL(frete.valor) + (frete.regiao ? " • " + frete.regiao : "")
-                  : "informe o CEP")),
+                h("strong", null, freteTexto(frete))),
               h("div", { className: "resumo__linha resumo__linha--total" }, h("span", null, "Total"),
-                h("strong", null, semPreco ? "a combinar" : formatBRL(frete ? total : subtotal)))
+                h("strong", null, semPreco ? "a combinar" : (freteValor == null ? formatBRL(subtotal) : formatBRL(total))))
             ),
             h("button", { className: "btn btn--primary btn--block", onClick: () => setShowQuote(true) },
               "Solicitar orçamento")
@@ -705,7 +772,7 @@
     }
 
     /* ---------- Admin: painel ---------- */
-    function AdminPanel({ user, produtos, categorias, onClose, onLogout, hero }) {
+    function AdminPanel({ user, produtos, categorias, onClose, onLogout, hero, frete }) {
       const [nome, setNome] = React.useState("");
       const [categoria, setCategoria] = React.useState("");
       const [secao, setSecao] = React.useState("catalogo");
@@ -717,7 +784,9 @@
       const [descricao, setDescricao] = React.useState("");
       const [filamento, setFilamento] = React.useState("");
       const [peso, setPeso] = React.useState("");
-      const [dimensoes, setDimensoes] = React.useState("");
+      const [comprimento, setComprimento] = React.useState("");
+      const [largura, setLargura] = React.useState("");
+      const [altura, setAltura] = React.useState("");
       const [editando, setEditando] = React.useState(null);
       const [msg, setMsg] = React.useState("");
       const [msgErro, setMsgErro] = React.useState(false);
@@ -729,6 +798,22 @@
       const [soDestaque, setSoDestaque] = React.useState(false);
       const [ordenando, setOrdenando] = React.useState(false);
       const formRef = React.useRef(null);
+      const [fCep, setFCep] = React.useState("");
+      const [fGratis, setFGratis] = React.useState("");
+      const [fPesoIncl, setFPesoIncl] = React.useState("");
+      const [fPesoExc, setFPesoExc] = React.useState("");
+      const [fTab, setFTab] = React.useState(() => tabelaParaArray(window.FRETE_TABELA));
+
+      React.useEffect(() => {
+        const f = frete || {};
+        setFCep(f.cepOrigem || "");
+        setFGratis(f.freteGratis ? String(f.freteGratis) : "");
+        setFPesoIncl(f.pesoIncluidoKg ? String(f.pesoIncluidoKg) : "");
+        setFPesoExc(f.valorKgExcedente ? String(f.valorKgExcedente) : "");
+        setFTab(Array.isArray(f.tabelaFrete) && f.tabelaFrete.length === 10
+          ? f.tabelaFrete.map((v) => (v == null ? "" : String(v)))
+          : tabelaParaArray(window.FRETE_TABELA));
+      }, [frete]);
 
       React.useEffect(() => {
         const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -758,7 +843,7 @@
         setNome(""); setCategoria(""); setSecao("catalogo"); setNovo(false); setEsgotado(false);
         setDestaque(false);
         setImagem(""); setPreco(""); setDescricao(""); setFilamento("");
-        setPeso(""); setDimensoes(""); setEditando(null);
+        setPeso(""); setComprimento(""); setLargura(""); setAltura(""); setEditando(null);
         setErros({});
       };
 
@@ -767,17 +852,23 @@
         mostrarMsg("", false);
         const precoNum = preco === "" ? null : Number(String(preco).replace(",", "."));
         const pesoNum = peso === "" ? null : Number(String(peso).replace(",", "."));
+        const compNum = comprimento === "" ? null : Number(String(comprimento).replace(",", "."));
+        const largNum = largura === "" ? null : Number(String(largura).replace(",", "."));
+        const altNum = altura === "" ? null : Number(String(altura).replace(",", "."));
         const e = {};
         if (!nome.trim()) e.nome = "Informe o nome da peça.";
         if (!categoria.trim()) e.categoria = "Informe a categoria.";
         if (preco !== "" && (!isFinite(precoNum) || precoNum < 0)) {
           e.preco = "Preço inválido. Use apenas números, ex.: 49.90";
         }
-        if (peso !== "" && (!isFinite(pesoNum) || pesoNum < 0)) {
-          e.peso = "Peso inválido. Use apenas números, ex.: 120";
+        if (pesoNum == null || !isFinite(pesoNum) || pesoNum <= 0) {
+          e.peso = "Informe o peso em gramas (ex.: 120).";
         }
+        if (compNum == null || !isFinite(compNum) || compNum <= 0) e.comprimento = "Informe em cm (ex.: 10).";
+        if (largNum == null || !isFinite(largNum) || largNum <= 0) e.largura = "Informe em cm (ex.: 5).";
+        if (altNum == null || !isFinite(altNum) || altNum <= 0) e.altura = "Informe em cm (ex.: 8).";
         setErros(e);
-        if (e.nome || e.categoria || e.preco || e.peso) return;
+        if (Object.keys(e).some((k) => e[k])) return;
         if (!window.fbDb) { mostrarMsg("Banco de dados indisponível.", true); return; }
         const dados = {
           nome: nome.trim(),
@@ -790,7 +881,10 @@
           descricao: descricao.trim(),
           filamento: filamento,
           peso: pesoNum,
-          dimensoes: dimensoes.trim()
+          comprimento: compNum,
+          largura: largNum,
+          altura: altNum,
+          dimensoes: dimTexto(compNum, largNum, altNum)
         };
         dados.imagem = imagem || "assets/images/p1.svg";
         setSaving(true);
@@ -824,7 +918,12 @@
         setDescricao(p.descricao || "");
         setFilamento(p.filamento || "");
         setPeso(p.peso == null ? "" : String(p.peso));
-        setDimensoes(p.dimensoes || "");
+        const dm = (p.comprimento || p.largura || p.altura)
+          ? { comprimento: p.comprimento, largura: p.largura, altura: p.altura }
+          : parseDimensoes(p.dimensoes);
+        setComprimento(dm.comprimento == null ? "" : String(dm.comprimento));
+        setLargura(dm.largura == null ? "" : String(dm.largura));
+        setAltura(dm.altura == null ? "" : String(dm.altura));
         setErros({});
         mostrarMsg("Editando: " + (p.nome || ""), false);
         setTimeout(() => {
@@ -865,6 +964,9 @@
             descricao: p.descricao || "",
             filamento: p.filamento || "",
             peso: p.peso != null ? p.peso : null,
+            comprimento: p.comprimento != null ? p.comprimento : null,
+            largura: p.largura != null ? p.largura : null,
+            altura: p.altura != null ? p.altura : null,
             dimensoes: p.dimensoes || "",
             imagem: p.imagem || "assets/images/p1.svg",
             ordem: Date.now()
@@ -916,6 +1018,25 @@
         }
       };
 
+      const salvarFrete = async () => {
+        if (!window.fbDb) { mostrarMsg("Banco de dados indisponível.", true); return; }
+        const num = (v) => { const n = Number(String(v).replace(",", ".")); return isFinite(n) ? n : 0; };
+        const freteObj = {
+          cepOrigem: String(fCep).replace(/\D/g, "").slice(0, 8),
+          freteGratis: String(fGratis).trim() === "" ? 0 : num(fGratis),
+          pesoIncluidoKg: String(fPesoIncl).trim() === "" ? 0 : num(fPesoIncl),
+          valorKgExcedente: String(fPesoExc).trim() === "" ? 0 : num(fPesoExc),
+          tabelaFrete: fTab.map((v) => num(v))
+        };
+        try {
+          await window.fbDb.collection("produtos").doc("_site").set({ frete: freteObj }, { merge: true });
+          mostrarMsg("Configurações de frete salvas.", false);
+        } catch (err) {
+          console.warn("Falha ao salvar config de frete:", err.code || err.message);
+          mostrarMsg("Erro ao salvar frete: " + err.message, true);
+        }
+      };
+
       const importar = async () => {
         if (!window.fbDb) return;
         if (!window.confirm("Importar o catálogo atual para o banco de dados?")) return;
@@ -929,9 +1050,16 @@
           let i = 0;
           base.forEach((p) => {
             const ref = col.doc();
+            const dm = parseDimensoes(p.dimensoes);
+            const c = p.comprimento != null ? Number(p.comprimento) : (dm.comprimento ? Number(dm.comprimento) : null);
+            const l = p.largura != null ? Number(p.largura) : (dm.largura ? Number(dm.largura) : null);
+            const a = p.altura != null ? Number(p.altura) : (dm.altura ? Number(dm.altura) : null);
             lote.set(ref, { nome: p.nome, categoria: p.categoria, secao: p.secao,
               novo: !!p.novo, destaque: !!p.destaque, imagem: p.imagem, ordem: i++,
-              esgotado: false, preco: null, descricao: "", filamento: "", peso: null, dimensoes: "" });
+              esgotado: false, preco: null, descricao: "", filamento: "",
+              peso: p.peso != null ? Number(p.peso) : null,
+              comprimento: c, largura: l, altura: a,
+              dimensoes: p.dimensoes || dimTexto(c, l, a) });
           });
           await lote.commit();
           mostrarMsg("Catálogo importado.", false);
@@ -1018,17 +1146,33 @@
               ),
               h("div", { className: "admin__row" },
                 h("label", { className: clsCampo("peso") },
-                  h("span", null, "Peso (g)"),
+                  h("span", null, "Peso (g) *"),
                   h("input", { value: peso, inputMode: "numeric", placeholder: "Ex.: 120",
                     onChange: (e) => { setPeso(e.target.value); limparErro("peso"); } }),
                   erroCampo("peso")
                 ),
-                h("label", { className: "field" },
-                  h("span", null, "Dimensões"),
-                  h("input", { value: dimensoes, placeholder: "Ex.: 10x5x8 cm",
-                    onChange: (e) => setDimensoes(e.target.value) })
+                h("label", { className: clsCampo("comprimento") },
+                  h("span", null, "Comprimento (cm) *"),
+                  h("input", { value: comprimento, inputMode: "decimal", placeholder: "Ex.: 10",
+                    onChange: (e) => { setComprimento(e.target.value); limparErro("comprimento"); } }),
+                  erroCampo("comprimento")
                 )
               ),
+              h("div", { className: "admin__row" },
+                h("label", { className: clsCampo("largura") },
+                  h("span", null, "Largura (cm) *"),
+                  h("input", { value: largura, inputMode: "decimal", placeholder: "Ex.: 5",
+                    onChange: (e) => { setLargura(e.target.value); limparErro("largura"); } }),
+                  erroCampo("largura")
+                ),
+                h("label", { className: clsCampo("altura") },
+                  h("span", null, "Altura (cm) *"),
+                  h("input", { value: altura, inputMode: "decimal", placeholder: "Ex.: 8",
+                    onChange: (e) => { setAltura(e.target.value); limparErro("altura"); } }),
+                  erroCampo("altura")
+                )
+              ),
+              h("small", { className: "field__help" }, "Peso e medidas (cm) são obrigatórios: usados no cálculo do frete."),
               h("div", { className: "admin__checks" },
                 h("label", { className: "check" },
                   h("input", { type: "checkbox", checked: novo,
@@ -1058,6 +1202,44 @@
                 onClick: () => { limparForm(); mostrarMsg("", false); } }, "Cancelar edição")
             ),
             h("div", { className: "admin__list" },
+              h("details", { className: "admin__frete" },
+                h("summary", null, "Configurações de frete"),
+                h("div", { className: "admin__row" },
+                  h("label", { className: "field" },
+                    h("span", null, "CEP de origem"),
+                    h("input", { value: fCep, inputMode: "numeric", placeholder: "00000000",
+                      onChange: (e) => setFCep(e.target.value.replace(/\D/g, "").slice(0, 8)) })
+                  ),
+                  h("label", { className: "field" },
+                    h("span", null, "Frete grátis acima de (R$)"),
+                    h("input", { value: fGratis, inputMode: "decimal", placeholder: "0 = desligado",
+                      onChange: (e) => setFGratis(e.target.value) })
+                  )
+                ),
+                h("div", { className: "admin__row" },
+                  h("label", { className: "field" },
+                    h("span", null, "Peso incluso (kg)"),
+                    h("input", { value: fPesoIncl, inputMode: "decimal", placeholder: "Ex.: 1",
+                      onChange: (e) => setFPesoIncl(e.target.value) })
+                  ),
+                  h("label", { className: "field" },
+                    h("span", null, "Adicional por kg excedente (R$)"),
+                    h("input", { value: fPesoExc, inputMode: "decimal", placeholder: "Ex.: 5",
+                      onChange: (e) => setFPesoExc(e.target.value) })
+                  )
+                ),
+                h("p", { className: "field__help" },
+                  "Tabela por região (1º dígito do CEP). Usada como estimativa de frete."),
+                h("div", { className: "admin__frete-tab" },
+                  fTab.map((v, i) => h("label", { key: i, className: "field field--mini" },
+                    h("span", null, REGIOES_CEP[i]),
+                    h("input", { value: v, inputMode: "decimal",
+                      onChange: (e) => { const c = fTab.slice(); c[i] = e.target.value; setFTab(c); } })
+                  ))
+                ),
+                h("button", { type: "button", className: "btn btn--primary", onClick: salvarFrete },
+                  "Salvar configurações de frete")
+              ),
               h("div", { className: "admin__list-head" },
                 h("h3", null, "Itens (" + produtos.length + ")"),
                 h("button", { type: "button", className: "btn btn--ghost", onClick: importar,
@@ -1093,7 +1275,8 @@
                         h("div", { className: "admin__item-info" },
                           h("div", { className: "admin__item-nome" },
                             h("strong", null, p.nome),
-                            p.destaque && h("span", { className: "badge-destaque" }, "★ Destaque")
+                            p.destaque && h("span", { className: "badge-destaque" }, "★ Destaque"),
+                            !temMedidasFrete(p) && h("span", { className: "badge-medidas" }, "⚠ Sem medidas")
                           ),
                           h("span", null, (p.categoria || "-") + " • " +
                             (p.secao === "lancamentos" ? "Lançamentos" : "Catálogo") + " • " +
@@ -1322,7 +1505,7 @@
           unsub = window.fbDb.collection("produtos").doc("_site").onSnapshot(
             (snap) => {
               const d = snap.exists ? snap.data() : {};
-              if (d.hero) setCfg(d);
+              if (d.hero || d.frete) setCfg(d);
               else aplicarLegado();
             },
             (err) => {
@@ -1333,6 +1516,10 @@
         } catch (e) { setCfg({}); }
         return () => { if (unsub) unsub(); };
       }, []);
+      /* Publica a config de frete para o calculo (tabela, peso, frete gratis). */
+      React.useEffect(() => {
+        window.FRETE_CONFIG = (cfg && cfg.frete) ? cfg.frete : null;
+      }, [cfg]);
       /* Sincroniza o carrinho com o banco: descarta itens esgotados, removidos
          do catalogo ou que tiveram seus dados alterados (evita erro/valor velho). */
       React.useEffect(() => {
@@ -1454,6 +1641,7 @@
               produtos: produtosFs || [],
               categorias: categorias,
               hero: fonteHero,
+              frete: cfg && cfg.frete,
               onClose: () => setAdminOpen(false),
               onLogout: () => { if (window.fbAuth) window.fbAuth.signOut(); }
             })

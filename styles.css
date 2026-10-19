@@ -852,6 +852,45 @@ a:focus-visible {
   white-space: nowrap;
 }
 .admin__item-reorder { display: flex; gap: 4px; margin-top: 6px; }
+.badge-medidas {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #8a1f1f;
+  background: #fde8e8;
+  border: 1px solid #f5b5b5;
+  border-radius: 999px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.admin__frete {
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-sm);
+  padding: 10px 12px;
+  margin: 0 0 14px;
+  background: var(--fundo);
+}
+.admin__frete > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--azul-escuro);
+  font-size: 14px;
+  list-style: none;
+}
+.admin__frete > summary::-webkit-details-marker { display: none; }
+.admin__frete > summary::before { content: "▸ "; }
+.admin__frete[open] > summary::before { content: "▾ "; }
+.admin__frete > *:not(summary) { margin-top: 10px; }
+.admin__frete-tab {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.field--mini { gap: 2px; }
+.field--mini > span { font-size: 10px; line-height: 1.1; }
+.field--mini input { padding: 6px 8px; font-size: 13px; }
 .btn-setinha {
   width: 26px;
   height: 24px;
