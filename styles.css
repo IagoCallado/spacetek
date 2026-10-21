@@ -815,6 +815,15 @@ a:focus-visible {
   gap: 10px;
   margin-bottom: 12px;
 }
+.admin__hint-medidas {
+  font-weight: 600;
+  font-size: 12px;
+  color: #b26a00;
+  background: #fff6e6;
+  border-radius: var(--raio-sm);
+  padding: 3px 8px;
+  margin-left: 6px;
+}
 .admin__items {
   list-style: none;
   margin: 0;
@@ -883,6 +892,24 @@ a:focus-visible {
 .admin__frete > summary::before { content: "▸ "; }
 .admin__frete[open] > summary::before { content: "▾ "; }
 .admin__frete > *:not(summary) { margin-top: 10px; }
+.admin__frete-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.admin__frete-msg {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--raio-sm);
+  background: var(--azul-suave);
+  color: var(--azul-escuro);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.admin__frete-msg--erro { background: #fff1f1; color: #c81e1e; }
 .admin__frete-tab {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

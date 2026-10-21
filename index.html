@@ -13,21 +13,21 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.14" />
-  <script>window.__APP_VERSION = "2026-10-12.14";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.16" />
+  <script>window.__APP_VERSION = "2026-10-12.16";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.14"></script>
-  <script src="data/maintenance.js?v=2026-10-12.14"></script>
+  <script src="data/products.js?v=2026-10-12.16"></script>
+  <script src="data/maintenance.js?v=2026-10-12.16"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.14"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.16"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -154,10 +154,23 @@
       return isFinite(g) && g > 0 ? g / 1000 : null;
     }
 
+    /* Medidas em cm do produto: prefere os campos numericos; se faltarem
+       (pecas cadastradas antes da Part 1), extrai do texto "dimensoes",
+       ex.: "6,5x5x10 cm" -> 6.5 x 5 x 10. Retorna null se nao der. */
+    function medidasDe(p) {
+      if (!p) return null;
+      const num = (v) => Number(String(v).replace(",", "."));
+      const c = num(p.comprimento), l = num(p.largura), a = num(p.altura);
+      if (c > 0 && l > 0 && a > 0) return { comprimento: c, largura: l, altura: a };
+      const dm = parseDimensoes(p.dimensoes);
+      const c2 = num(dm.comprimento), l2 = num(dm.largura), a2 = num(dm.altura);
+      if (c2 > 0 && l2 > 0 && a2 > 0) return { comprimento: c2, largura: l2, altura: a2 };
+      return null;
+    }
+
     /* Produto pronto para cotar frete real: precisa de peso e 3 dimensoes. */
     function temMedidasFrete(p) {
-      return !!(p && Number(p.comprimento) > 0 && Number(p.largura) > 0 &&
-        Number(p.altura) > 0 && pesoKgDe(p) != null);
+      return !!(medidasDe(p) && pesoKgDe(p) != null);
     }
 
     function tabelaFreteAtual() {
@@ -225,15 +238,18 @@
       const base = String(c.endpoint || "").replace(/\/+$/, "");
       const destino = (cep || "").replace(/\D/g, "");
       if (!base || destino.length !== 8) return null;
-      const produtos = (itens || []).map((i) => ({
-        id: i.id || i.nome,
-        width: Number(i.largura) || 0,
-        height: Number(i.altura) || 0,
-        length: Number(i.comprimento) || 0,
-        weight: pesoKgDe(i) || 0,
-        insurance_value: precoDe(i) || 0,
-        quantity: i.qtd || 1
-      })).filter((p) => p.weight > 0 && p.width > 0 && p.height > 0 && p.length > 0);
+      const produtos = (itens || []).map((i) => {
+        const m = medidasDe(i) || {};
+        return {
+          id: i.id || i.nome,
+          width: Number(m.largura) || 0,
+          height: Number(m.altura) || 0,
+          length: Number(m.comprimento) || 0,
+          weight: pesoKgDe(i) || 0,
+          insurance_value: precoDe(i) || 0,
+          quantity: i.qtd || 1
+        };
+      }).filter((p) => p.weight > 0 && p.width > 0 && p.height > 0 && p.length > 0);
       if (!produtos.length) return null;
       try {
         const resp = await fetch(base + "/quote", {
@@ -883,6 +899,12 @@
       const [fPesoExc, setFPesoExc] = React.useState("");
       const [fEndpoint, setFEndpoint] = React.useState("");
       const [fTab, setFTab] = React.useState(() => tabelaParaArray(window.FRETE_TABELA));
+      /* Mensagens proprias do bloco de frete (nao usam a msg do form de pecas,
+         que fica em outra coluna e nao aparece perto do botao de salvar). */
+      const [msgFrete, setMsgFrete] = React.useState("");
+      const [msgFreteErro, setMsgFreteErro] = React.useState(false);
+      const [salvandoFrete, setSalvandoFrete] = React.useState(false);
+      const [testandoFrete, setTestandoFrete] = React.useState(false);
 
       React.useEffect(() => {
         const f = frete || {};
@@ -903,6 +925,7 @@
       }, [onClose]);
 
       const mostrarMsg = (texto, erro) => { setMsg(texto); setMsgErro(!!erro); };
+      const mostrarMsgFrete = (texto, erro) => { setMsgFrete(texto); setMsgFreteErro(!!erro); };
       const limparErro = (campo) => setErros((e) => (e[campo] ? Object.assign({}, e, { [campo]: "" }) : e));
       const erroCampo = (campo) => erros[campo] && h("small", { className: "field__erro" }, erros[campo]);
       const clsCampo = (campo) => "field" + (erros[campo] ? " field--erro" : "");
@@ -1100,7 +1123,7 @@
       };
 
       const salvarFrete = async () => {
-        if (!window.fbDb) { mostrarMsg("Banco de dados indisponível.", true); return; }
+        if (!window.fbDb) { mostrarMsgFrete("Banco de dados indisponível.", true); return; }
         const num = (v) => { const n = Number(String(v).replace(",", ".")); return isFinite(n) ? n : 0; };
         const freteObj = {
           cepOrigem: String(fCep).replace(/\D/g, "").slice(0, 8),
@@ -1110,12 +1133,53 @@
           endpoint: String(fEndpoint).trim(),
           tabelaFrete: fTab.map((v) => num(v))
         };
+        setSalvandoFrete(true);
         try {
           await window.fbDb.collection("produtos").doc("_site").set({ frete: freteObj }, { merge: true });
-          mostrarMsg("Configurações de frete salvas.", false);
+          mostrarMsgFrete("Configurações de frete salvas.", false);
         } catch (err) {
           console.warn("Falha ao salvar config de frete:", err.code || err.message);
-          mostrarMsg("Erro ao salvar frete: " + err.message, true);
+          mostrarMsgFrete("Erro ao salvar frete: " + err.message, true);
+        } finally {
+          setSalvandoFrete(false);
+        }
+      };
+
+      /* Testa o endpoint do Worker com o CEP de origem informado, para validar
+         a cotacao real antes de o cliente final usa-la. */
+      const testarCotacao = async () => {
+        const base = String(fEndpoint || "").trim().replace(/\/+$/, "");
+        const cepOrigem = String(fCep || "").replace(/\D/g, "").slice(0, 8);
+        if (!base) { mostrarMsgFrete("Informe o endpoint do Worker antes de testar.", true); return; }
+        if (cepOrigem.length !== 8) { mostrarMsgFrete("Informe um CEP de origem com 8 dígitos.", true); return; }
+        setTestandoFrete(true);
+        mostrarMsgFrete("Testando cotação...", false);
+        try {
+          const resp = await fetch(base + "/quote", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              cepOrigem: cepOrigem, cep: cepOrigem,
+              items: [{ id: "teste", width: 16, height: 10, length: 20, weight: 0.6, insurance_value: 120, quantity: 1 }]
+            })
+          });
+          const txt = await resp.text();
+          let data = null; try { data = JSON.parse(txt); } catch (e) {}
+          if (!resp.ok) {
+            const det = data && (data.detalhe || data.erro) ? (data.detalhe || data.erro) : txt.slice(0, 300);
+            mostrarMsgFrete("Falha na cotação (" + resp.status + "): " + det, true);
+            return;
+          }
+          const ops = (data && data.opcoes) || [];
+          if (!ops.length) { mostrarMsgFrete("O Worker respondeu sem opções de frete.", true); return; }
+          const resumo = ops.map((o) =>
+            ([o.empresa, o.servico].filter(Boolean).join(" ") + " " + formatBRL(o.preco) + (o.prazo != null ? " (" + o.prazo + "d)" : ""))
+          ).join(" · ");
+          mostrarMsgFrete("Cotação OK — " + resumo, false);
+        } catch (err) {
+          mostrarMsgFrete("Não foi possível falar com o Worker: " + (err && err.message || err), true);
+        } finally {
+          setTestandoFrete(false);
         }
       };
 
@@ -1163,6 +1227,7 @@
         return true;
       });
       const nDestaques = listaBase.filter((p) => p.destaque).length;
+      const semMedidas = listaBase.filter((p) => !temMedidasFrete(p)).length;
 
       return h("div", { className: "modal-overlay" },
         h("div", { className: "modal admin", onClick: (e) => e.stopPropagation() },
@@ -1284,7 +1349,7 @@
                 onClick: () => { limparForm(); mostrarMsg("", false); } }, "Cancelar edição")
             ),
             h("div", { className: "admin__list" },
-              h("details", { className: "admin__frete" },
+              h("details", { className: "admin__frete", open: true },
                 h("summary", null, "Configurações de frete"),
                 h("div", { className: "admin__row" },
                   h("label", { className: "field" },
@@ -1328,11 +1393,18 @@
                       onChange: (e) => { const c = fTab.slice(); c[i] = e.target.value; setFTab(c); } })
                   ))
                 ),
-                h("button", { type: "button", className: "btn btn--primary", onClick: salvarFrete },
-                  "Salvar configurações de frete")
+                h("div", { className: "admin__frete-acoes" },
+                  h("button", { type: "button", className: "btn btn--primary", onClick: salvarFrete, disabled: salvandoFrete },
+                    salvandoFrete ? "Salvando..." : "Salvar configurações de frete"),
+                  h("button", { type: "button", className: "btn btn--ghost", onClick: testarCotacao, disabled: testandoFrete },
+                    testandoFrete ? "Testando..." : "Testar cotação")
+                ),
+                msgFrete && h("p", { className: "admin__frete-msg" + (msgFreteErro ? " admin__frete-msg--erro" : "") }, msgFrete)
               ),
               h("div", { className: "admin__list-head" },
-                h("h3", null, "Itens (" + produtos.length + ")"),
+                h("h3", null, "Itens (" + produtos.length + ")",
+                  semMedidas > 0 ? h("span", { className: "admin__hint-medidas", title: "Sem peso e medidas: nao sao cotados no frete real" },
+                    " · " + semMedidas + " sem medidas") : null),
                 h("button", { type: "button", className: "btn btn--ghost", onClick: importar,
                   disabled: importando }, importando ? "Importando..." : "Importar catálogo atual")
               ),
