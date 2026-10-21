@@ -1,0 +1,12 @@
+{
+  "name": "spacetek",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Worker de cotacao de frete (Frenet/SuperFrete) do SpaceTek",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "secret": "wrangler secret put"
+  }
+}

@@ -2,6 +2,9 @@
 
 Cloudflare Worker que faz a cotação real de frete (Frenet ou SuperFrete) para o site.
 
+**Worker publicado em:** `https://spacetek-frete.spacetek.workers.dev`
+(subdomínio workers.dev da conta `Callads31@gmail.com's Account`)
+
 O site **não precisa** deste Worker para funcionar: sem o endpoint configurado (ou em caso de
 falha), o orçamento usa a tabela estática do painel como estimativa.
 
@@ -15,6 +18,8 @@ falha), o orçamento usa a tabela estática do painel como estimativa.
 - Node.js instalado (para o `wrangler`).
 
 ## Deploy (primeira vez)
+
+> Já publicado. Para republicar depois de mexer no código: `npm run deploy` (ou `wrangler deploy`).
 
 No terminal, dentro da pasta `worker`:
 
@@ -37,11 +42,18 @@ wrangler secret put CEP_ORIGEM
 wrangler deploy
 ```
 
+> **Atenção:** o `wrangler secret put` só funciona **depois** do primeiro `wrangler deploy`
+> (é preciso o Worker existir na conta) e **precisa ser executado dentro da pasta `worker`**
+> (é lá que está o `wrangler.toml` com o nome do Worker).
+
 O `wrangler deploy` imprime a URL, algo como:
 
 ```
-https://spacetek-frete.SUA-CONTA.workers.dev
+https://spacetek-frete.spacetek.workers.dev
 ```
+
+> O certificado do subdomínio `*.workers.dev` pode levar ~1–2 minutos para ser emitido
+> logo após o primeiro deploy — se der "handshake failure", é só esperar e repetir.
 
 ## Ativar no site
 
