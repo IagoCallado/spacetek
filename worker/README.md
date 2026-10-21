@@ -12,9 +12,9 @@ falha), o orçamento usa a tabela estática do painel como estimativa.
 
 - Conta gratuita no Cloudflare: https://dash.cloudflare.com/sign-up
 - Conta em um provedor de cotação:
-  - **Frenet** (recomendado, token fixo): https://www.frenet.com.br/ — pegue o **token** em
-    *Minha conta → Integrações*.
-  - **SuperFrete**: https://web.superfrete.com/ — gere um **token** em *Configurações → Token*.
+  - **SuperFrete** (em uso): https://web.superfrete.com/ — gere o token em
+    *Integrações → Integrar em Desenvolvedores → Confirmar*.
+  - **Frenet**: https://www.frenet.com.br/ — token em *Minha conta → Dados Cadastrais → Chaves de Acesso → TOKEN*.
 - Node.js instalado (para o `wrangler`).
 
 ## Deploy (primeira vez)
@@ -31,8 +31,8 @@ npm install -g wrangler
 wrangler login
 
 # 3. Gravar o token do provedor (pede o valor, nao vai para o repositorio)
-wrangler secret put PROVEDOR_TOKEN
-#   -> cole o token do Frenet (ou SuperFrete)
+wrangler secret put SUPERFRETE_TOKEN
+#   -> cole o token da SuperFrete
 
 # 4. (Opcional) CEP de origem como segredo; normalmente vem do painel do site
 wrangler secret put CEP_ORIGEM
@@ -63,17 +63,29 @@ https://spacetek-frete.spacetek.workers.dev
 
 Pronto: ao digitar um CEP válido no orçamento, as opções reais aparecem para escolha.
 
-## Usar SuperFrete em vez de Frenet
+## Provedores
 
-No `wrangler.toml`, troque:
+O provedor ativo vem da var `PROVEDOR` no `wrangler.toml`:
 
-```toml
-[vars]
-PROVEDOR = "superfrete"
-```
+| PROVEDOR | Secret do token | Endpoint |
+|---|---|---|
+| `superfrete` | `SUPERFRETE_TOKEN` | `https://api.superfrete.com/api/v0/calculator` |
+| `frenet` | `FRENET_TOKEN` | `https://api.frenet.com.br/shipping/quote` |
 
-Depois `wrangler deploy` novamente e grave o token do SuperFrete com
-`wrangler secret put PROVEDOR_TOKEN`.
+`PROVEDOR_TOKEN` continua funcionando como fallback de qualquer um dos dois.
+Para trocar de provedor: mude a var, grave o secret correspondente e rode `wrangler deploy`.
+
+### SuperFrete — detalhes
+
+- **Serviços cotados**: `SUPERFRETE_SERVICES = "1,2,17"` → 1 = PAC, 2 = SEDEX, 17 = Mini Envios.
+  Outros códigos: 3 = Jadlog, 33 = J&T.
+- **Sandbox**: troque `SUPERFRETE_URL` para `https://sandbox.superfrete.com/api/v0/calculator`
+  e use o token de https://sandbox.superfrete.com/#/integrations (etiquetas de sandbox não valem postagem real).
+- **Cabeçalhos obrigatórios**: `Authorization: Bearer {token}` e
+  `User-Agent: NomeDaApp/versao (email@tecnico.com)`.
+- A cotação é **grátis**; só a emissão da etiqueta é cobrada.
+- A API marca serviços inviáveis com `has_error: true` (ex.: Mini Envios acima do limite) —
+  o Worker descarta esses itens em vez de mostrar preço zero.
 
 ## Testar
 
@@ -87,20 +99,20 @@ curl -X POST https://spacetek-frete.spacetek.workers.dev/quote `
   -d '{\"cepOrigem\":\"18000000\",\"cep\":\"01001000\",\"items\":[{\"width\":16,\"height\":10,\"length\":20,\"weight\":0.6,\"insurance_value\":120,\"quantity\":1}]}'
 ```
 
-### Testar o token do Frenet direto (sem passar pelo Worker)
+### Testar o token do provedor direto (sem passar pelo Worker)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\testar-token.ps1
 ```
-O script pede o token (fica apenas na memória da sua máquina) e chama a Frenet diretamente,
-mostrando se o token é aceito ou se a conta está bloqueada.
+O script pede o token (fica apenas na memória da sua máquina) e chama a SuperFrete diretamente,
+mostrando se o token é aceito.
 
-> O `/health` do Worker também diagnostica: mostra o tamanho do secret e o retorno de
-> `GET https://api.frenet.com.br/shipping/info` (200 = token válido; 401 = token recusado).
+> O `/health` do Worker também diagnostica: mostra o tamanho do secret e faz uma cotação
+> mínima de teste (200 = token válido; 401/403 = token recusado).
 
 ## Segurança
 
-- O `PROVEDOR_TOKEN` fica como *secret* no Cloudflare — **nunca** no repositório.
+- Os tokens ficam como *secret* no Cloudflare — **nunca** no repositório.
 - `ALLOWED_ORIGINS` (no `wrangler.toml`) restringe quem pode chamar a API.
   Em produção mantenha só `https://iagocallado.github.io`.
 
@@ -108,3 +120,4 @@ mostrando se o token é aceito ou se a conta está bloqueada.
 
 - `wrangler.toml` — configuração (nome, vars, origens permitidas).
 - `src/index.js` — Worker: CORS, validação e adaptadores Frenet/SuperFrete.
+- `testar-token.ps1` — teste local do token, sem expor no chat.

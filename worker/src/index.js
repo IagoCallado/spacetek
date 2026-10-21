@@ -5,10 +5,13 @@
  * e devolve { opcoes:[{ id, servico, empresa, preco, prazo }] }.
  *
  * Segredos (via `wrangler secret put`):
- *   PROVEDOR_TOKEN  — token da conta no provedor (Frenet / SuperFrete)
- *   CEP_ORIGEM      — CEP de origem (fallback; o site tambem envia)
+ *   SUPERFRETE_TOKEN  — token da conta SuperFrete (usado quando PROVEDOR = "superfrete")
+ *   FRENET_TOKEN      — token da conta Frenet     (usado quando PROVEDOR = "frenet")
+ *   PROVEDOR_TOKEN    — fallback para qualquer provedor
+ *   CEP_ORIGEM        — CEP de origem (fallback; o site tambem envia)
  *
- * Vars (wrangler.toml): PROVEDOR, USER_AGENT, ALLOWED_ORIGINS
+ * Vars (wrangler.toml): PROVEDOR, USER_AGENT, ALLOWED_ORIGINS,
+ *                       SUPERFRETE_URL, SUPERFRETE_SERVICES
  */
 
 const LIMITE_ITENS = 20;
@@ -41,9 +44,19 @@ function json(obj, status, env, origin) {
 
 const soDigitos = (v) => String(v || "").replace(/\D/g, "");
 
-/* Token do provedor: remove espacos/quebras de linha quevenueem do copy/paste. */
+/* Provedor ativo (frenet | superfrete). */
+function provedorAtivo(env) {
+  return String((env && env.PROVEDOR) || "frenet").toLowerCase();
+}
+
+/* Token do provedor: remove espacos/quebras de linha que vem do copy/paste.
+   Cada provedor tem seu proprio secret (FRENET_TOKEN / SUPERFRETE_TOKEN).
+   PROVEDOR_TOKEN e fallback apenas do Frenet (onde ja estava gravado). */
 function tokenProvedor(env) {
-  return String((env && env.PROVEDOR_TOKEN) || "").trim().replace(/\s+/g, "");
+  const raw = provedorAtivo(env) === "superfrete"
+    ? (env && env.SUPERFRETE_TOKEN)
+    : ((env && env.FRENET_TOKEN) || (env && env.PROVEDOR_TOKEN));
+  return String(raw || "").trim().replace(/\s+/g, "");
 }
 
 function normalizarItems(items) {
@@ -111,46 +124,67 @@ async function cotarFrenet(env, cepOrigem, cep, dados) {
     .filter((o) => isFinite(o.preco) && o.preco > 0);
 }
 
-/* ---------- Provedor: SuperFrete ---------- */
+/* ---------- Provedor: SuperFrete ----------
+   Doc: POST https://api.superfrete.com/api/v0/calculator
+   Headers: Authorization: Bearer {token} + User-Agent: NomeApp/versao (email@tecnico.com)
+   Body: { from:{postal_code}, to:{postal_code}, services:"1,2,17",
+           options:{own_hand,receipt,insurance_value,use_insurance_value},
+           products:[{quantity,weight,height,width,length}] }
+   Resposta: array de { id, name, price, delivery_time, delivery_range, company:{name}, has_error } */
 async function cotarSuperFrete(env, cepOrigem, cep, dados) {
-  const resp = await fetch("https://api.superfrete.com/api/v0/calculator", {
+  const url = env.SUPERFRETE_URL || "https://api.superfrete.com/api/v0/calculator";
+  const resp = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json",
       "Authorization": "Bearer " + tokenProvedor(env),
-      "User-Agent": env.USER_AGENT || "SpaceTek Frete"
+      "User-Agent": env.USER_AGENT || "SpaceTek Frete (contato@spacetek.com)"
     },
     body: JSON.stringify({
       from: { postal_code: cepOrigem },
       to: { postal_code: cep },
-      services: "1,2,17,3,4",
-      options: { receipt: false, own_hand: false, collect: false },
+      services: env.SUPERFRETE_SERVICES || "1,2,17",
+      options: {
+        own_hand: false,
+        receipt: false,
+        insurance_value: dados.valor,
+        use_insurance_value: dados.valor > 0
+      },
       products: dados.itens.map((i) => ({
-        id: i.id, width: i.width, height: i.height, length: i.length,
-        weight: i.weight, insurance_value: i.insurance_value || 0, quantity: i.quantity
+        quantity: i.quantity,
+        weight: i.weight,
+        height: i.height,
+        width: i.width,
+        length: i.length
       }))
     })
   });
-  if (!resp.ok) throw new Error("superfrete http " + resp.status);
-  const data = await resp.json();
-  const arr = Array.isArray(data) ? data : (data.opcoes || data.data || []);
+  const raw = await resp.text();
+  if (!resp.ok) {
+    throw new Error("superfrete http " + resp.status + " -> " + raw.slice(0, 300));
+  }
+  let data;
+  try { data = JSON.parse(raw); }
+  catch (e) { throw new Error("superfrete resposta nao-JSON: " + raw.slice(0, 200)); }
+  const arr = Array.isArray(data) ? data : (data.services || data.data || []);
   return arr
-    .filter((s) => !s.error && (s.price != null || s.custom_price != null))
+    /* has_error:true = servico nao atende o pacote (ex.: Mini Envios) -> esconder. */
+    .filter((s) => s && !s.has_error && !s.error && (s.price != null || s.custom_price != null))
     .map((s) => ({
       id: String(s.id || s.service || s.name || ""),
       servico: s.name || s.service || "Frete",
-      empresa: (s.company && (s.company.name || s.company)) || "",
+      empresa: (s.company && (s.company.name || s.company)) || s.carrier_name || "",
       preco: Number(String(s.custom_price != null ? s.custom_price : s.price).replace(",", ".")),
       prazo: s.custom_delivery_time != null ? parseInt(s.custom_delivery_time, 10)
-        : (s.delivery_time != null ? parseInt(s.delivery_time, 10) : null)
+        : (s.delivery_time != null ? parseInt(s.delivery_time, 10)
+          : (s.delivery_range && s.delivery_range.max != null ? parseInt(s.delivery_range.max, 10) : null))
     }))
     .filter((o) => isFinite(o.preco) && o.preco > 0);
 }
 
 async function cotar(env, cepOrigem, cep, dados) {
-  const provedor = String(env.PROVEDOR || "frenet").toLowerCase();
-  if (provedor === "superfrete") return cotarSuperFrete(env, cepOrigem, cep, dados);
+  if (provedorAtivo(env) === "superfrete") return cotarSuperFrete(env, cepOrigem, cep, dados);
   return cotarFrenet(env, cepOrigem, cep, dados);
 }
 
@@ -168,21 +202,44 @@ export default {
     }
 
     if (url.pathname === "/health") {
-      const rawToken = String(env.PROVEDOR_TOKEN || "");
+      const provedor = provedorAtivo(env);
       const tok = tokenProvedor(env);
-      const info = { ok: true, provedor: env.PROVEDOR || "frenet", token: !!tok,
+      const rawToken = String((env.PROVEDOR_TOKEN || "") + String(env.SUPERFRETE_TOKEN || "") + String(env.FRENET_TOKEN || ""));
+      const info = { ok: true, provedor, token: !!tok,
         tokenLen: tok.length, tokenTemEspaco: /\s/.test(rawToken),
-        tokenFormato: /^[A-Za-z0-9._-]+$/.test(tok) };
-      /* Diagnostico: lista os servicos da conta. 200 = token valido;
-         401 = token invalido ou conta sem liberacao; vazio = sem contrato de transportadora. */
+        tokenFormato: /^[A-Za-z0-9._-]+$/i.test(tok) };
+      /* Diagnostico: faz uma cotacao minima (a cotacao e gratis; so a etiqueta e cobrada).
+         200 = token valido; 401/403 = token recusado. */
       if (tok) {
         try {
-          const r = await fetch("https://api.frenet.com.br/shipping/info", {
-            headers: { token: tok, Accept: "application/json" }
-          });
-          const t = await r.text();
-          info.servicosStatus = r.status;
-          info.servicos = t.slice(0, 500);
+          if (provedor === "superfrete") {
+            const r = await fetch(env.SUPERFRETE_URL || "https://api.superfrete.com/api/v0/calculator", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Accept: "application/json",
+                Authorization: "Bearer " + tok, "User-Agent": env.USER_AGENT || "SpaceTek Frete (contato@spacetek.com)" },
+              body: JSON.stringify({
+                from: { postal_code: "01153000" },
+                to: { postal_code: "20020050" },
+                services: env.SUPERFRETE_SERVICES || "1,2,17",
+                options: { own_hand: false, receipt: false, insurance_value: 0, use_insurance_value: false },
+                products: [{ quantity: 1, weight: 0.3, height: 4, width: 11, length: 17 }]
+              })
+            });
+            const t = await r.text();
+            info.servicosStatus = r.status;
+            let j = null; try { j = JSON.parse(t); } catch (e) {}
+            info.servicosQtde = Array.isArray(j) ? j.length : null;
+            info.servicos = Array.isArray(j)
+              ? j.map((s) => (s && s.name) + " " + (s && s.price) + " (" + (s && s.delivery_time) + "d)" + (s && s.has_error ? " [erro]" : "")).join(" | ")
+              : t.slice(0, 400);
+          } else {
+            const r = await fetch("https://api.frenet.com.br/shipping/info", {
+              headers: { token: tok, Accept: "application/json" }
+            });
+            const t = await r.text();
+            info.servicosStatus = r.status;
+            info.servicos = t.slice(0, 500);
+          }
         } catch (e) { info.servicosErro = String(e && e.message || e); }
       }
       return json(info, 200, env, origin);
@@ -193,7 +250,8 @@ export default {
     }
 
     if (!tokenProvedor(env)) {
-      return json({ erro: "PROVEDOR_TOKEN nao configurado" }, 500, env, origin);
+      const p = provedorAtivo(env);
+      return json({ erro: p === "superfrete" ? "SUPERFRETE_TOKEN nao configurado" : "PROVEDOR_TOKEN nao configurado" }, 500, env, origin);
     }
 
     let body;
