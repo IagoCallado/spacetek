@@ -41,6 +41,11 @@ function json(obj, status, env, origin) {
 
 const soDigitos = (v) => String(v || "").replace(/\D/g, "");
 
+/* Token do provedor: remove espacos/quebras de linha quevenueem do copy/paste. */
+function tokenProvedor(env) {
+  return String((env && env.PROVEDOR_TOKEN) || "").trim().replace(/\s+/g, "");
+}
+
 function normalizarItems(items) {
   if (!Array.isArray(items) || items.length === 0) return null;
   if (items.length > LIMITE_ITENS) return null;
@@ -67,7 +72,7 @@ async function cotarFrenet(env, cepOrigem, cep, dados) {
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json",
-      "token": env.PROVEDOR_TOKEN
+      "token": tokenProvedor(env)
     },
     body: JSON.stringify({
       SellerCEP: cepOrigem,
@@ -79,8 +84,20 @@ async function cotarFrenet(env, cepOrigem, cep, dados) {
       }))
     })
   });
-  if (!resp.ok) throw new Error("frenet http " + resp.status);
-  const data = await resp.json();
+  const raw = await resp.text();
+  if (!resp.ok) {
+    throw new Error("frenet http " + resp.status + " -> " + raw.slice(0, 300));
+  }
+  let data;
+  try { data = JSON.parse(raw); }
+  catch (e) { throw new Error("frenet resposta nao-JSON: " + raw.slice(0, 200)); }
+  if (data && data.error) {
+    throw new Error("frenet erro: " + JSON.stringify(data).slice(0, 300));
+  }
+  /* A Frenet pode responder HTTP 200 com {"Message":"Acesso negado!"} no corpo. */
+  if (data && data.Message && !data.ShippingSevicesArray) {
+    throw new Error("frenet recusou a chamada: " + String(data.Message).slice(0, 200));
+  }
   const arr = data.ShippingSevicesArray || data.ShippingServicesArray || [];
   return arr
     .filter((s) => !s.Error && s.ShippingPrice != null)
@@ -101,7 +118,7 @@ async function cotarSuperFrete(env, cepOrigem, cep, dados) {
     headers: {
       "Content-Type": "application/json",
       "Accept": "application/json",
-      "Authorization": "Bearer " + env.PROVEDOR_TOKEN,
+      "Authorization": "Bearer " + tokenProvedor(env),
       "User-Agent": env.USER_AGENT || "SpaceTek Frete"
     },
     body: JSON.stringify({
@@ -151,14 +168,31 @@ export default {
     }
 
     if (url.pathname === "/health") {
-      return json({ ok: true, provedor: env.PROVEDOR || "frenet", token: !!env.PROVEDOR_TOKEN }, 200, env, origin);
+      const rawToken = String(env.PROVEDOR_TOKEN || "");
+      const tok = tokenProvedor(env);
+      const info = { ok: true, provedor: env.PROVEDOR || "frenet", token: !!tok,
+        tokenLen: tok.length, tokenTemEspaco: /\s/.test(rawToken),
+        tokenFormato: /^[A-Za-z0-9._-]+$/.test(tok) };
+      /* Diagnostico: lista os servicos da conta. 200 = token valido;
+         401 = token invalido ou conta sem liberacao; vazio = sem contrato de transportadora. */
+      if (tok) {
+        try {
+          const r = await fetch("https://api.frenet.com.br/shipping/info", {
+            headers: { token: tok, Accept: "application/json" }
+          });
+          const t = await r.text();
+          info.servicosStatus = r.status;
+          info.servicos = t.slice(0, 500);
+        } catch (e) { info.servicosErro = String(e && e.message || e); }
+      }
+      return json(info, 200, env, origin);
     }
 
     if (url.pathname !== "/quote" || request.method !== "POST") {
       return json({ erro: "rota invalida" }, 404, env, origin);
     }
 
-    if (!env.PROVEDOR_TOKEN) {
+    if (!tokenProvedor(env)) {
       return json({ erro: "PROVEDOR_TOKEN nao configurado" }, 500, env, origin);
     }
 

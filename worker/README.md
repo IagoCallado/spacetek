@@ -79,13 +79,24 @@ Depois `wrangler deploy` novamente e grave o token do SuperFrete com
 
 ```powershell
 # health check
-curl https://spacetek-frete.SUA-CONTA.workers.dev/health
+curl https://spacetek-frete.spacetek.workers.dev/health
 
 # cotacao
-curl -X POST https://spacetek-frete.SUA-CONTA.workers.dev/quote `
+curl -X POST https://spacetek-frete.spacetek.workers.dev/quote `
   -H "Content-Type: application/json" `
   -d '{\"cepOrigem\":\"18000000\",\"cep\":\"01001000\",\"items\":[{\"width\":16,\"height\":10,\"length\":20,\"weight\":0.6,\"insurance_value\":120,\"quantity\":1}]}'
 ```
+
+### Testar o token do Frenet direto (sem passar pelo Worker)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\testar-token.ps1
+```
+O script pede o token (fica apenas na memória da sua máquina) e chama a Frenet diretamente,
+mostrando se o token é aceito ou se a conta está bloqueada.
+
+> O `/health` do Worker também diagnostica: mostra o tamanho do secret e o retorno de
+> `GET https://api.frenet.com.br/shipping/info` (200 = token válido; 401 = token recusado).
 
 ## Segurança
 
