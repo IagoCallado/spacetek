@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0A2540" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Painel do administrador | SpaceTek</title>
+  <link rel="icon" href="../assets/images/logo.jpg" />
+  <link rel="stylesheet" href="../styles.css?v=2026-10-12.17" />
+  <link rel="stylesheet" href="admin-page.css?v=2026-10-12.17" />
+  <script>window.__APP_VERSION = "2026-10-12.17";</script>
+</head>
+<body class="admin-body">
+
+  <div id="root"></div>
+
+  <!-- Catalogo atual (fallback em data/products.js): usado pelo botao
+       "Importar catalogo atual". -->
+  <script src="../data/products.js?v=2026-10-12.17"></script>
+
+  <!-- Firebase SDK (compat) via CDN -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="../data/firebase-config.js?v=2026-10-12.17"></script>
+
+  <!-- React via CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Helpers compartilhados (site + painel admin) -->
+  <script src="../js/comum.js?v=2026-10-12.17"></script>
+
+  <!-- Painel admin (JSX em arquivo separado: o Babel so carrega via http(s)) -->
+  <script type="text/babel" data-presets="react" src="admin-app.js?v=2026-10-12.17"></script>
+
+  <!-- Bootstrap da pagina (JSX inline minimo) -->
+  <script type="text/babel" data-presets="react">
+    (function () {
+      /* O Babel carrega admin-panel.js via XHR: abrindo o arquivo direto do
+         disco (file://) a pagina cai neste aviso. */
+      function PainelIndisponivel() {
+        return h("div", { className: "admin-boot" },
+          h("div", { className: "admin-boot__card" },
+            h("h1", null, "Painel indisponÃ­vel"),
+            h("p", null, "Esta pÃ¡gina carrega scripts pela web. Abra o painel pelo site publicado:"),
+            h("a", { className: "btn btn--primary", href: "../" }, "Ir para o site"),
+            h("p", { className: "admin-boot__hint" },
+              "Se vocÃª abriu o arquivo direto do disco, use o endereÃ§o publicado em vez do caminho local.")
+          )
+        );
+      }
+      function App() {
+        if (!window.AdminApp) return h(PainelIndisponivel, null);
+        return h(window.AdminApp, null);
+      }
+      ReactDOM.createRoot(document.getElementById("root")).render(h(App, null));
+    })();
+  </script>
+
+  <!-- Auto-atualizacao: se a versao publicada mudar, recarrega sem cache. -->
+  <script>
+    (function () {
+      if (location.protocol === "file:") return;
+      try {
+        var req = new XMLHttpRequest();
+        req.open("GET", "../version.json?t=" + Date.now(), true);
+        req.onload = function () {
+          try {
+            var dados = JSON.parse(req.responseText);
+            var nova = dados && dados.v;
+            if (!nova) return;
+            if (nova !== window.__APP_VERSION) {
+              var chave = "spacetek_ver";
+              if (sessionStorage.getItem(chave) !== nova) {
+                sessionStorage.setItem(chave, nova);
+                location.replace(location.pathname + "?v=" + encodeURIComponent(nova) + location.hash);
+              }
+            } else if (location.search.indexOf("v=") >= 0) {
+              history.replaceState(null, "", location.pathname + location.hash);
+            }
+          } catch (e) {}
+        };
+        req.send();
+      } catch (e) {}
+    })();
+  </script>
+</body>
+</html>
