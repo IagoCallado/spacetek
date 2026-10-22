@@ -556,13 +556,35 @@
         return "";
       };
 
-      const enviar = (e) => {
+      const enviar = async (e) => {
         e.preventDefault();
         const msgErro = validar();
         if (msgErro) { setErro(msgErro); return; }
         setErro("");
-        const url = "https://wa.me/" + window.WHATSAPP_NUMBER + "?text=" + encodeURIComponent(buildMessage());
-        window.open(url, "_blank");
+        try {
+          const worker = window.WORKER_URL || "https://spacetek-frete.spacetek.workers.dev";
+          const pedido = {
+            nome: nome.trim(),
+            contato: contato.trim(),
+            cep: cep.trim(),
+            endereco: endereco.trim(),
+            obs: obs.trim(),
+            itens: items.map((i) => ({ id: i.id, nome: i.nome, qtd: i.qtd, preco: precoDe(i), imagem: i.imagem })),
+            subtotal: subtotal,
+            frete: frete ? { valor: frete.valor, gratis: frete.gratis, prazo: frete.prazo, transportadora: frete.transportadora, servico: frete.servico, real: frete.real, estimado: frete.estimado } : null,
+            total: total
+          };
+          const resp = await fetch(worker + "/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pedido) });
+          let data = null;
+          try { data = await resp.json(); } catch (e2) {}
+          let msg = buildMessage();
+          if (data && data.id) msg = "Pedido: " + data.id + "\n\n" + msg;
+          const url = "https://wa.me/" + window.WHATSAPP_NUMBER + "?text=" + encodeURIComponent(msg);
+          window.open(url, "_blank");
+        } catch (err) {
+          const url = "https://wa.me/" + window.WHATSAPP_NUMBER + "?text=" + encodeURIComponent(buildMessage());
+          window.open(url, "_blank");
+        }
       };
 
       const copiar = async () => {
@@ -612,7 +634,7 @@
         ),
         erro && h("p", { className: "quote__erro" }, erro),
         h("div", { className: "quote__actions" },
-          h("button", { type: "submit", className: "btn btn--primary btn--block" }, "Enviar no WhatsApp"),
+          h("button", { type: "submit", className: "btn btn--primary btn--block" }, "Registrar e abrir WhatsApp"),
           h("button", { type: "button", className: "btn btn--ghost btn--block", onClick: copiar },
             copiado ? "Copiado!" : "Copiar pedido")
         )
@@ -693,7 +715,7 @@
                 h("strong", null, semPreco ? "a combinar" : (freteValor == null ? formatBRL(subtotal) : formatBRL(total))))
             ),
             h("button", { className: "btn btn--primary btn--block", onClick: () => setShowQuote(true) },
-              "Solicitar orçamento")
+              "Registrar e abrir WhatsApp")
           )
         )
       );
@@ -1082,6 +1104,10 @@
       s.onerror = () => raiz.render(h(ErrorBoundary, null, h(Manutencao, null)));
       document.head.appendChild(s);
     }
+  </script>
+
+  <script>
+    window.WORKER_URL = window.WORKER_URL || "https://spacetek-frete.spacetek.workers.dev";
   </script>
 
   <!-- Auto-atualizacao: se a versao publicada mudar, recarrega sem cache. -->
