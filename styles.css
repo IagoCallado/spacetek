@@ -799,6 +799,7 @@ a:focus-visible {
 .frete-opcao--sel { border-color: var(--azul); box-shadow: 0 0 0 2px rgba(11, 95, 255, .12); }
 .frete-opcao input { accent-color: var(--azul); }
 .frete-opcao__nome { flex: 1; font-size: 14px; color: var(--azul-escuro); }
+.frete-opcao__nota { font-style: normal; font-size: 12px; color: var(--texto-suave); }
 .frete-opcao__preco { font-size: 14px; font-weight: 700; color: var(--azul-escuro); white-space: nowrap; }
 .link {
   border: 0;

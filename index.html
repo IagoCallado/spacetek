@@ -13,20 +13,20 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.18" />
-  <script>window.__APP_VERSION = "2026-10-12.18";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.19" />
+  <script>window.__APP_VERSION = "2026-10-12.19";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.18"></script>
-  <script src="data/maintenance.js?v=2026-10-12.18"></script>
+  <script src="data/products.js?v=2026-10-12.19"></script>
+  <script src="data/maintenance.js?v=2026-10-12.19"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.18"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.19"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -34,7 +34,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <!-- Helpers compartilhados (site + painel admin) -->
-  <script src="js/comum.js?v=2026-10-12.18"></script>
+  <script src="js/comum.js?v=2026-10-12.19"></script>
 
   <!-- Aplicacao (JSX inline: o site funciona em file:// sem servidor) -->
   <script type="text/babel" data-presets="react">
@@ -128,7 +128,9 @@
     }
 
     /* Cotacao real via Cloudflare Worker (endpoint configurado no painel).
-       Retorna array de opcoes ou null (sem endpoint / falha / sem medidas). */
+       Retorna { opcoes: [...], estimado: bool } ou null (sem endpoint /
+       falha / itens sem medidas). "estimado" = o Worker devolveu a tabela
+       de reserva porque o provedor de frete esta fora do ar. */
     async function cotarFreteRemoto(cep, itens) {
       const c = window.FRETE_CONFIG || {};
       const base = String(c.endpoint || "").replace(/\/+$/, "");
@@ -157,14 +159,66 @@
         const data = await resp.json();
         const ops = data && data.opcoes;
         if (!Array.isArray(ops) || !ops.length) return null;
-        return ops.map((o, idx) => ({
+        const opcoes = ops.map((o, idx) => ({
           id: o.id != null ? String(o.id) : String(idx),
           servico: o.servico || o.name || "Frete",
           empresa: o.empresa || o.company || "",
           preco: Number(o.preco != null ? o.preco : o.price) || 0,
-          prazo: o.prazo != null ? o.prazo : (o.delivery_time != null ? o.delivery_time : null)
+          prazo: o.prazo != null ? o.prazo : (o.delivery_time != null ? o.delivery_time : null),
+          estimado: !!o.estimado
         }));
+        return { opcoes, estimado: !!data.fallback || opcoes.some((o) => o.estimado) };
       } catch (e) { return null; }
+    }
+
+    /* Registra um evento de uso no Worker (contadores do painel admin).
+       Nunca bloqueia a interface e falha em silencio. */
+    function registrarEvento(pagina) {
+      try {
+        const worker = window.WORKER_URL || "https://spacetek-frete.spacetek.workers.dev";
+        const payload = JSON.stringify({ pagina: pagina });
+        if (navigator.sendBeacon) {
+          /* Conteudo "text/plain" e um tipo seguro em CORS: o beacon vai sem
+             preflight (o Worker le o corpo como JSON de qualquer forma). */
+          const blob = new Blob([payload], { type: "text/plain;charset=UTF-8" });
+          if (navigator.sendBeacon(worker + "/event", blob)) return;
+        }
+        fetch(worker + "/event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+          keepalive: true
+        }).catch(() => {});
+      } catch (e) { /* ignora */ }
+    }
+
+    /* ---------- WhatsApp do cliente ----------
+       O numero e obrigatorio no checkout: e por ele que o painel admin
+       avisa o cliente quando o status do pedido muda. */
+    function digitosWhatsapp(v) {
+      return String(v || "").replace(/\D/g, "");
+    }
+    /* (00) 00000-0000 — mostra os 2 primeiros digitos como DDD. */
+    function mascaraWhatsapp(v) {
+      const d = digitosWhatsapp(v).slice(0, 11);
+      if (!d) return "";
+      if (d.length <= 2) return "(" + d;
+      if (d.length <= 6) return "(" + d.slice(0, 2) + ") " + d.slice(2);
+      if (d.length <= 10) return "(" + d.slice(0, 2) + ") " + d.slice(2, 6) + "-" + d.slice(6);
+      return "(" + d.slice(0, 2) + ") " + d.slice(2, 7) + "-" + d.slice(7);
+    }
+    /* Numero completo para o WhatsApp: 55 + DDD + numero (sem +). */
+    function numeroWhatsappCompleto(v) {
+      let d = digitosWhatsapp(v);
+      if (!d) return "";
+      if (d.length === 13 && d.slice(0, 2) === "55") d = d.slice(2);
+      if (d.length === 11 && d.slice(0, 2) === "55") d = d.slice(2);
+      return "55" + d;
+    }
+    /* 10 digitos (fixo) ou 11 (celular) — com DDD. */
+    function numeroWhatsappValido(v) {
+      const d = digitosWhatsapp(v);
+      return d.length === 10 || d.length === 11;
     }
 
     /* ---------- Icones ---------- */
@@ -301,9 +355,39 @@
     /* ---------- Detalhe do produto (modal) ---------- */
     function ProdutoModal({ produto, onClose, onAdd }) {
       const [cep, setCep] = React.useState("");
+      const [opcoes, setOpcoes] = React.useState(null);
+      const [opcaoSel, setOpcaoSel] = React.useState(null);
+      const [cotando, setCotando] = React.useState(false);
+      const [cotacaoErro, setCotacaoErro] = React.useState(false);
+      const cepTimer = React.useRef(null);
       const preco = precoDe(produto);
-      const frete = React.useMemo(() => calcularFrete(cep, [Object.assign({}, produto, { qtd: 1 })], preco || 0),
-        [cep, produto, preco]);
+
+      /* Frete da tabela (reserva, usada quando o endpoint nao responde).
+         Tambem aplica a regra de frete gratis do painel. */
+      const itemUnico = React.useMemo(
+        () => Object.assign({}, produto, { qtd: 1 }), [produto]);
+      const estatico = React.useMemo(
+        () => calcularFrete(cep, [itemUnico], preco || 0), [cep, itemUnico, preco]);
+
+      /* Cotacao real no endpoint (Worker). A tabela so entra quando o
+         endpoint falha ou o produto nao tem medidas para cotar. */
+      const cotar = React.useCallback(async (cepDigits) => {
+        if (!cepDigits || cepDigits.length !== 8) return;
+        setCotando(true);
+        setCotacaoErro(false);
+        const res = await cotarFreteRemoto(cepDigits, [itemUnico]);
+        setCotando(false);
+        if (res && res.opcoes && res.opcoes.length) {
+          setOpcoes(res.opcoes);
+          setOpcaoSel(res.opcoes[0].id);
+        } else {
+          setOpcoes(null);
+          setOpcaoSel(null);
+          /* So e "erro" quando o produto tem medidas (ou seja, o endpoint
+             deveria ter respondido). Sem medidas o valor e a combinar. */
+          setCotacaoErro(temMedidasFrete(itemUnico));
+        }
+      }, [itemUnico]);
 
       React.useEffect(() => {
         const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -311,10 +395,28 @@
         return () => document.removeEventListener("keydown", onKey);
       }, [onClose]);
 
-      const onCep = (v) => setCep(formatCep(v));
+      const onCep = (v) => {
+        const fmt = formatCep(v);
+        setCep(fmt);
+        setOpcoes(null);
+        setOpcaoSel(null);
+        setCotacaoErro(false);
+        if (cepTimer.current) clearTimeout(cepTimer.current);
+        const digits = fmt.replace(/\D/g, "");
+        if (digits.length === 8) cepTimer.current = setTimeout(() => cotar(digits), 450);
+      };
 
-      const total = (preco && frete && !frete.aCombinar) ? preco + (frete.gratis ? 0 : frete.valor) : null;
-      const cepIncompleto = cep.replace(/\D/g, "").length === 8 && !frete;
+      /* freteGratis do painel tem prioridade sobre a cotacao. */
+      const gratis = !!(estatico && estatico.gratis);
+      const temOpcoes = !!opcoes && opcoes.length > 0 && !gratis;
+      const opcaoSelObj = temOpcoes
+        ? (opcoes.find((o) => o.id === opcaoSel) || opcoes[0])
+        : null;
+      /* Valor exibido: opcao real escolhida; senão a tabela da reserva. */
+      const freteValor = temOpcoes ? opcaoSelObj.preco
+        : (estatico && !estatico.aCombinar ? (estatico.gratis ? 0 : estatico.valor) : null);
+      const total = (preco && freteValor != null) ? preco + freteValor : null;
+      const cepIncompleto = cep.replace(/\D/g, "").length === 8 && !estatico && !temOpcoes;
       const esgotado = !!produto.esgotado;
       const overlayProps = useOverlayClose(onClose);
 
@@ -345,10 +447,39 @@
                   h("input", { value: cep, placeholder: "00000-000", inputMode: "numeric",
                     onChange: (e) => onCep(e.target.value) })
                 ),
-                frete && frete.aCombinar && h("p", { className: "frete__res" }, "Frete a combinar (fale com a gente)."),
-                frete && !frete.aCombinar && h("p", { className: "frete__res" }, "Frete para ",
-                  h("strong", null, frete.regiao ? frete.regiao + " (" + cep + ")" : cep), ": ",
-                  h("strong", null, frete.gratis ? "Grátis" : formatBRL(frete.valor))),
+                cotando && h("p", { className: "frete-opcoes__status" }, "Calculando opções de frete..."),
+                temOpcoes && h("div", { className: "frete-opcoes" },
+                  h("p", { className: "frete-opcoes__titulo" }, "Escolha o frete:"),
+                  opcoes.map((o) => h("label", {
+                    key: o.id,
+                    className: "frete-opcao" + (opcaoSelObj && opcaoSelObj.id === o.id ? " frete-opcao--sel" : "")
+                  },
+                    h("input", {
+                      type: "radio", name: "frete-modal", checked: !!(opcaoSelObj && opcaoSelObj.id === o.id),
+                      onChange: () => setOpcaoSel(o.id)
+                    }),
+                    h("span", { className: "frete-opcao__nome" },
+                      [o.empresa, o.servico].filter(Boolean).join(" · ") || "Frete",
+                      o.estimado ? h("em", { className: "frete-opcao__nota" }, " (estimado pela tabela)") : null),
+                    h("span", { className: "frete-opcao__preco" },
+                      formatBRL(o.preco) + (o.prazo != null ? " · " + o.prazo + " dias" : ""))
+                  ))
+                ),
+                gratis && h("p", { className: "frete-opcoes__status frete-opcoes__status--ok" },
+                  "Frete grátis para este pedido."),
+                temOpcoes && h("p", { className: "frete__res" }, "Frete para ",
+                  h("strong", null, cep), ": ",
+                  h("strong", null, formatBRL(opcaoSelObj.preco)),
+                  opcaoSelObj.prazo != null ? h("span", null, " (" + opcaoSelObj.prazo + " dias)") : null),
+                !temOpcoes && !gratis && estatico && estatico.aCombinar &&
+                  h("p", { className: "frete__res" }, "Frete a combinar (fale com a gente)."),
+                !temOpcoes && !gratis && estatico && !estatico.aCombinar &&
+                  h("p", { className: "frete__res" }, "Frete para ",
+                    h("strong", null, estatico.regiao ? estatico.regiao + " (" + cep + ")" : cep), ": ",
+                    h("strong", null, formatBRL(estatico.valor)),
+                    h("span", { className: "frete__res--nota" }, " (estimado pela tabela)")),
+                cotacaoErro && h("p", { className: "frete-opcoes__status" },
+                  "Não foi possível cotar agora; usando valor estimado."),
                 cepIncompleto && h("p", { className: "frete__res frete__res--erro" }, "CEP inválido."),
                 total && h("p", { className: "frete__total" }, "Total com frete: ",
                   h("strong", null, formatBRL(total)))
@@ -425,6 +556,7 @@
       const [nome, setNome] = React.useState("");
       const [cep, setCep] = React.useState(() => formatCep(cepInicial || ""));
       const [endereco, setEndereco] = React.useState("");
+      const [whatsapp, setWhatsapp] = React.useState("");
       const [contato, setContato] = React.useState("");
       const [obs, setObs] = React.useState("");
       const [erro, setErro] = React.useState("");
@@ -448,7 +580,7 @@
       const opcaoSelObj = podeReal ? (opcoes.find((o) => o.id === opcaoSel) || opcoes[0]) : null;
       const frete = podeReal
         ? { valor: opcaoSelObj.preco, prazo: opcaoSelObj.prazo, transportadora: opcaoSelObj.empresa,
-            servico: opcaoSelObj.servico, real: true, regiao: estatico.regiao }
+            servico: opcaoSelObj.servico, real: true, estimado: !!opcaoSelObj.estimado, regiao: estatico.regiao }
         : estatico;
       const freteValor = frete && !frete.aCombinar ? (frete.gratis ? 0 : frete.valor) : null;
       const total = subtotal + (freteValor || 0);
@@ -460,10 +592,18 @@
         if (!endpoint) return;
         setCotando(true);
         setCotacaoErro(false);
-        const ops = await cotarFreteRemoto(cepDigits, items);
+        const res = await cotarFreteRemoto(cepDigits, items);
         setCotando(false);
-        if (ops && ops.length) { setOpcoes(ops); setOpcaoSel(ops[0].id); }
-        else { setOpcoes(null); setCotacaoErro(true); }
+        if (res && res.opcoes && res.opcoes.length) {
+          setOpcoes(res.opcoes);
+          setOpcaoSel(res.opcoes[0].id);
+        } else {
+          setOpcoes(null);
+          setOpcaoSel(null);
+          /* Erro real so quando todos os itens tem medidas (o endpoint
+             deveria ter respondido). */
+          setCotacaoErro(items.every((i) => temMedidasFrete(i)));
+        }
       };
 
       const buscarCep = async (valor) => {
@@ -532,7 +672,8 @@
           "Olá SpaceTek! Gostaria de um orçamento.",
           "Nome: " + nome.trim(),
           "CEP: " + cep.trim(),
-          "Endereço: " + endereco.trim()
+          "Endereço: " + endereco.trim(),
+          "WhatsApp: " + (mascaraWhatsapp(whatsapp) || "")
         ];
         if (contato.trim()) linhas.push("Contato: " + contato.trim());
         linhas.push("", "Itens:");
@@ -553,6 +694,7 @@
         if (digits.length !== 8) return "Informe um CEP válido (8 dígitos).";
         if (!cepValidado) return "Confirme um CEP válido antes de enviar.";
         if (!endereco.trim()) return "Informe o número e o complemento do endereço.";
+        if (!numeroWhatsappValido(whatsapp)) return "Informe um WhatsApp válido com DDD (10 ou 11 dígitos).";
         return "";
       };
 
@@ -565,6 +707,7 @@
           const worker = window.WORKER_URL || "https://spacetek-frete.spacetek.workers.dev";
           const pedido = {
             nome: nome.trim(),
+            whatsapp: numeroWhatsappCompleto(whatsapp),
             contato: contato.trim(),
             cep: cep.trim(),
             endereco: endereco.trim(),
@@ -620,13 +763,21 @@
           opcoes.map((o) => h("label", { key: o.id, className: "frete-opcao" + (opcaoSelObj && opcaoSelObj.id === o.id ? " frete-opcao--sel" : "") },
             h("input", { type: "radio", name: "frete", checked: !!(opcaoSelObj && opcaoSelObj.id === o.id),
               onChange: () => setOpcaoSel(o.id) }),
-            h("span", { className: "frete-opcao__nome" }, [o.empresa, o.servico].filter(Boolean).join(" · ") || "Frete"),
+            h("span", { className: "frete-opcao__nome" },
+              [o.empresa, o.servico].filter(Boolean).join(" · ") || "Frete",
+              o.estimado ? h("em", { className: "frete-opcao__nota" }, " (estimado pela tabela)") : null),
             h("span", { className: "frete-opcao__preco" }, formatBRL(o.preco) + (o.prazo != null ? " · " + o.prazo + " dias" : ""))
           ))
-        ),
-        cotacaoErro && h("p", { className: "frete-opcoes__status" }, "Não foi possível cotar agora; usando valor estimado."),
+        ),        cotacaoErro && h("p", { className: "frete-opcoes__status" }, "Não foi possível cotar agora; usando valor estimado."),
         campo("Endereço *", endereco, setEndereco, "Número e complemento (rua/cidade preenchidos pelo CEP)"),
-        campo("Telefone / E-mail (opcional)", contato, setContato, "(00) 00000-0000 ou email@exemplo.com"),
+        h("label", { className: "field" },
+          h("span", null, "WhatsApp *"),
+          h("input", { value: mascaraWhatsapp(whatsapp), placeholder: "(00) 00000-0000", inputMode: "numeric",
+            onChange: (e) => setWhatsapp(digitosWhatsapp(e.target.value)) }),
+          h("small", { className: "field__hint field__hint--idle" },
+            "Obrigatório: usamos este número para avisar você quando o pedido mudar de status.")
+        ),
+        campo("E-mail ou outro contato (opcional)", contato, setContato, "email@exemplo.com"),
         h("label", { className: "field" },
           h("span", null, "Observações (opcional)"),
           h("textarea", { value: obs, rows: 2, placeholder: "Cor do filamento, tamanho...",
@@ -634,7 +785,7 @@
         ),
         erro && h("p", { className: "quote__erro" }, erro),
         h("div", { className: "quote__actions" },
-          h("button", { type: "submit", className: "btn btn--primary btn--block" }, "Registrar e abrir WhatsApp"),
+          h("button", { type: "submit", className: "btn btn--primary btn--block" }, "Confirmar pedido"),
           h("button", { type: "button", className: "btn btn--ghost btn--block", onClick: copiar },
             copiado ? "Copiado!" : "Copiar pedido")
         )
@@ -715,7 +866,7 @@
                 h("strong", null, semPreco ? "a combinar" : (freteValor == null ? formatBRL(subtotal) : formatBRL(total))))
             ),
             h("button", { className: "btn btn--primary btn--block", onClick: () => setShowQuote(true) },
-              "Registrar e abrir WhatsApp")
+              "Confirmar pedido")
           )
         )
       );
@@ -954,6 +1105,27 @@
         return () => document.body.classList.remove("no-scroll");
       }, [cartOpen, menuOpen, selected]);
 
+      /* Contadores do dia (painel admin): 1 visita por sessao. */
+      React.useEffect(() => {
+        try {
+          if (sessionStorage.getItem("spacetek_visita")) return;
+          sessionStorage.setItem("spacetek_visita", "1");
+        } catch (e) { /* ignora */ }
+        registrarEvento("visita");
+      }, []);
+
+      /* Abrir o detalhe de um produto (contador "cliques em produto"). */
+      const abrirProduto = (p) => {
+        registrarEvento("produto");
+        setSelected(p);
+      };
+
+      /* Abrir a sacola (contador "acessos ao carrinho"). */
+      const abrirCarrinho = () => {
+        registrarEvento("carrinho");
+        setCartOpen(true);
+      };
+
       const addItem = (produto) => {
         if (produto.esgotado) return;
         setCart((prev) => {
@@ -1007,7 +1179,7 @@
       return h(React.Fragment, null,
         h(Header, {
           cartCount: totalItens,
-          onOpenCart: () => setCartOpen(true),
+          onOpenCart: abrirCarrinho,
           onInicio: () => { limparFiltro(); irPara("inicio"); },
           onVerTodos: () => { limparFiltro(); setShowAll(true); irPara("catalogo"); },
           onQuemSomos: () => irPara("sobre"),
@@ -1024,9 +1196,9 @@
           h(Hero, { destaques: destaques }),
           h(Catalog, { produtos: catalogoFiltrado, onAdd: addItem, cart: cart,
             showAll: showAll, onToggleAll: () => setShowAll((v) => !v),
-            filtro: filtro, onOpen: setSelected, categorias: categorias, onFiltro: onFiltro }),
+            filtro: filtro, onOpen: abrirProduto, categorias: categorias, onFiltro: onFiltro }),
           lancamentos.length > 0 && !filtro && h(Lancamentos, { produtos: lancamentos, onAdd: addItem, cart: cart,
-            onOpen: setSelected }),
+            onOpen: abrirProduto }),
           h(Personalizado, null),
           h(About, null)
         ),
@@ -1045,7 +1217,7 @@
         h(CartDrawer, { open: cartOpen, onClose: () => setCartOpen(false), items: items,
           onInc: inc, onDec: dec, onRemove: remove }),
         selected && h(ProdutoModal, { produto: selected, onClose: () => setSelected(null),
-          onAdd: (p) => { addItem(p); setSelected(null); setCartOpen(true); } })
+          onAdd: (p) => { addItem(p); setSelected(null); abrirCarrinho(); } })
       );
     }
 

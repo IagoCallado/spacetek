@@ -1,12 +1,46 @@
 # Worker de frete — SpaceTek
 
-Cloudflare Worker que faz a cotação real de frete (Frenet ou SuperFrete) para o site.
+Cloudflare Worker que faz a cotação real de frete (Frenet ou SuperFrete) para o site,
+guarda os pedidos do checkout e conta os acessos do dia (visitas / cliques em produto /
+aberturas de carrinho).
 
 **Worker publicado em:** `https://spacetek-frete.spacetek.workers.dev`
 (subdomínio workers.dev da conta `Callads31@gmail.com's Account`)
 
 O site **não precisa** deste Worker para funcionar: sem o endpoint configurado (ou em caso de
 falha), o orçamento usa a tabela estática do painel como estimativa.
+
+## Rotas
+
+| Método | Rota | O que faz | Acesso |
+|---|---|---|---|
+| `GET` | `/health` | diagnóstico: versão, provedor, token, KV e allowlist | público |
+| `POST` | `/quote` | cotação real de frete (`{ cepOrigem?, cep, items[] }`) | público |
+| `POST` | `/event` | conta um evento de uso (`{ pagina }`) | público |
+| `GET` | `/analytics?dia=AAAA-MM-DD` | contadores do dia (visita/produto/carrinho/admin) | público |
+| `POST` | `/order` | grava o pedido do checkout (inclui o WhatsApp do cliente) | público |
+| `GET` | `/orders` | lista os pedidos (painel admin) | ID token do Firebase |
+| `PATCH` | `/orders/:id` | muda o status do pedido e guarda o histórico | ID token do Firebase |
+
+### Pedidos e WhatsApp
+
+O checkout do site **exige** o WhatsApp do cliente e o envia no `POST /order`
+(`whatsapp` gravado só com dígitos, no formato `55 + DDD + número`).
+Quando o painel admin troca o status de um pedido, ele abre uma conversa
+`wa.me` com o cliente já com a mensagem preenchida — não é preciso API da Meta.
+
+Cada mudança de status vira uma entrada em `historico` (`{ status, em }`), que o painel
+mostra no card do pedido.
+
+### Eventos (`/event`)
+
+O site chama `/event` em três momentos: `visita` (1x por sessão), `produto` (abertura do
+detalhe) e `carrinho` (abertura da sacola). O navegador envia com `sendBeacon`
+(`Content-Type: text/plain`, para não gerar preflight) e o Worker lê o corpo como JSON.
+
+Por isso o CORS do Worker responde com `Access-Control-Allow-Credentials: true`:
+`sendBeacon` é uma requisição *credentialed* e, sem esse cabeçalho, o navegador
+descarta o preflight e o evento nunca é gravado.
 
 ## Requisitos
 
@@ -115,9 +149,12 @@ mostrando se o token é aceito.
 - Os tokens ficam como *secret* no Cloudflare — **nunca** no repositório.
 - `ALLOWED_ORIGINS` (no `wrangler.toml`) restringe quem pode chamar a API.
   Em produção mantenha só `https://iagocallado.github.io`.
+- `/orders` e `/orders/:id` exigem um **ID token do Firebase** válido (projeto
+  `spacetek-3bf38`). Com `ADMIN_EMAILS` vazio, qualquer conta autenticada do projeto
+  tem acesso — preencha a lista de e-mails antes de usar em produção.
 
 ## Arquivos
 
-- `wrangler.toml` — configuração (nome, vars, origens permitidas).
-- `src/index.js` — Worker: CORS, validação e adaptadores Frenet/SuperFrete.
+- `wrangler.toml` — configuração (nome, vars, origens permitidas, KV).
+- `src/index.js` — Worker: CORS, validação, adaptadores Frenet/SuperFrete, pedidos e eventos.
 - `testar-token.ps1` — teste local do token, sem expor no chat.

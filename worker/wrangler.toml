@@ -2,6 +2,18 @@ name = "spacetek-frete"
 main = "src/index.js"
 compatibility_date = "2026-01-01"
 
+[[kv_namespaces]]
+binding = "FRETE_CACHE"
+id = "b7acbb9813564f169c132484f77ba41f"
+
+[[kv_namespaces]]
+binding = "PEDIDOS"
+id = "df7a17b7237e403fad66ae38388cc1eb"
+
+[[kv_namespaces]]
+binding = "EVENTOS"
+id = "cb2265ddbd6d4d16a59059104bcacaab"
+
 # Variaveis nao-secretas. Segredos via:
 #   wrangler secret put SUPERFRETE_TOKEN   (provedor superfrete)
 #   wrangler secret put FRENET_TOKEN       (provedor frenet)
@@ -15,3 +27,7 @@ SUPERFRETE_URL = "https://api.superfrete.com/api/v0/calculator"
 SUPERFRETE_SERVICES = "1,2,17"
 # Origens permitidas (separadas por virgula). Ajuste conforme o dominio.
 ALLOWED_ORIGINS = "https://iagocallado.github.io,http://localhost:8899,http://localhost:8900"
+# Allowlist de e-mails admin para /orders (deixe vazio para aceitar qualquer ID token valido por enquanto)
+ADMIN_EMAILS = ""
+# Projetos Firebase permitidos (para validar ID tokens)
+FIREBASE_PROJECT_ID = "spacetek-3bf38"

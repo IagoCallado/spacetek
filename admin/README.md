@@ -13,8 +13,8 @@ em favor desta página.
 | Arquivo | Conteúdo |
 |---|---|
 | `index.html` | Página do painel: shell, CDNs (React 18, Babel standalone, Firebase), monta `window.AdminApp` e mostra o aviso de "Painel indisponível" se o JSX não carregar. |
-| `admin-app.js` | JSX do painel: `AdminApp` (shell + abas), `AdminLogin`, `AbaCatalogo`, `PecaForm`, `AbaFrete`, `AbaResumo`, `CatAutocomplete` + helpers (`gerarMiniatura`, `comprimirImagem`, `dimTexto`, `tabelaParaArray`, `imgSrc`). Exporta `window.AdminApp`. |
-| `admin-page.css` | Estilos da página (`.admin*`, `.badge-*`, `.btn-setinha`, `.btn-star`, `.autocomplete*`, `.field--mini`, `.field__help`, `.check--compact`). Usa as custom properties (`:root`) de `styles.css`. |
+| `admin-app.js` | JSX do painel: `AdminApp` (shell + abas), `AdminLogin`, `AbaCatalogo`, `PecaForm`, `AbaFrete`, `AbaPedidos`, `AbaResumo`, `CatAutocomplete` + helpers (`gerarMiniatura`, `comprimirImagem`, `dimTexto`, `tabelaParaArray`, `imgSrc`, `numeroPedido`, `mascaraPedido`, `linkWhatsApp`, `mensagemStatus`). Exporta `window.AdminApp`. |
+| `admin-page.css` | Estilos da página (`.admin*`, `.badge-*`, `.pedido-*`, `.btn-setinha`, `.btn-star`, `.autocomplete*`, `.field--mini`, `.field__help`, `.check--compact`). Usa as custom properties (`:root`) de `styles.css`. |
 | `README.md` | Este arquivo. |
 
 ## Abas
@@ -23,8 +23,14 @@ em favor desta página.
   editar, excluir, reordenar) e o formulário de peça em **drawer lateral**.
 - **Frete** — CEP de origem, frete grátis, peso incluso/excedente, endpoint do Worker,
   tabela por região (10 dígitos do CEP) + teste de cotação.
+- **Pedidos** — cards dos pedidos (cliente, WhatsApp, itens, totais, histórico de status),
+  busca por nome/id/telefone, filtros por status com contagem e o botão **Confirmar pedido**
+  da loja. Trocar o status salva no Worker e abre a conversa `wa.me` do cliente com a
+  mensagem já preenchida (o checkout exige o WhatsApp por isso). Pedidos sem WhatsApp
+  cadastrado mostram o aviso e não abrem a conversa.
 - **Resumo** — totais do catálogo (destaques, lançamentos, esgotados, sem medidas,
-  sem preço), aviso de peças que não são cotadas e status do Worker.
+  sem preço), aviso de peças que não são cotadas, status do Worker e os contadores
+  do dia (visitas, cliques em produto, acessos ao carrinho).
 
 ## Como é carregado
 

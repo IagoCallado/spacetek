@@ -1093,6 +1093,16 @@
 
   /* ---------- Aba: Resumo ---------- */
   function AbaResumo({ produtos, cfg, irPara }) {
+    const worker = window.WORKER_URL || "https://spacetek-frete.spacetek.workers.dev";
+    const [analytics, setAnalytics] = React.useState({ visita: 0, produto: 0, carrinho: 0, atualizadoEm: null });
+    React.useEffect(() => {
+      const hoje = new Date().toISOString().slice(0,10);
+      fetch(worker + "/health").catch(()=>{});
+      fetch(worker + "/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pagina: "admin" }) }).catch(()=>{});
+      if (window.fetch) {
+        fetch(worker.replace(/\/$/, "") + "/analytics?dia=" + hoje).then((r)=>r.ok?r.json():null).then((d)=>{ if(d) setAnalytics(d); }).catch(()=>{});
+      }
+    }, []);
     const [status, setStatus] = React.useState(null);
     const [verificando, setVerificando] = React.useState(false);
 
@@ -1136,12 +1146,25 @@
         nota && h("span", { className: "admin-stat__nota" }, nota)
       );
 
-    return h("div", { className: "admin-tab" },
-      h("section", { className: "admin-card" },
-        h("div", { className: "admin-card__head" },
-          h("h2", null, "Visao geral"),
-          h("span", { className: "admin-card__hint" }, "Atualiza em tempo real a cada alteracao no catalogo")
+      return h("div", { className: "admin-tab" },
+        h("section", { className: "admin-card" },
+          h("div", { className: "admin-card__head" },
+            h("h2", null, "Visao geral"),
+            h("span", { className: "admin-card__hint" }, "Analytics (hoje) + catalogo")
+          ),
+          h("div", { className: "admin-card__body" },
+            h("div", { className: "admin-stats" },
+              card("Visitas (hoje)", analytics.visita || 0, "Pela rota /event"),
+              card("Cliques em produto (hoje)", analytics.produto || 0, "Modal/visualizacao"),
+              card("Acessos ao carrinho (hoje)", analytics.carrinho || 0, "Abertura/uso")
+            )
+          )
         ),
+        h("section", { className: "admin-card" },
+          h("div", { className: "admin-card__head" },
+            h("h2", null, "Visao geral"),
+            h("span", { className: "admin-card__hint" }, "Atualiza em tempo real a cada alteracao no catalogo")
+          ),
         h("div", { className: "admin-card__body" },
           h("div", { className: "admin-stats" },
             card("Pecas no catalogo", total, total ? "Clique para ver" : null, () => irPara({ tipo: "todos" })),
@@ -1333,13 +1356,70 @@
   }
 
   /* ---------- Aba: Pedidos ---------- */
+  const STATUS_PEDIDO = [
+    { id: "novo", label: "Novo", classe: "badge-destaque" },
+    { id: "em_andamento", label: "Em andamento", classe: "badge-novo" },
+    { id: "enviado", label: "Enviado", classe: "badge-ok" },
+    { id: "entregue", label: "Entregue", classe: "badge-ok" },
+    { id: "cancelado", label: "Cancelado", classe: "badge-esgotado" }
+  ];
+
+  /* Numero do cliente guardado no pedido (55 + DDD + numero). */
+  function numeroPedido(p) {
+    let d = String(p.whatsapp || "").replace(/\D/g, "");
+    if (!d) return "";
+    if (d.length === 13 && d.slice(0, 2) === "55") d = d.slice(2);
+    return d.length === 11 ? "55" + d : d;
+  }
+  /* (00) 00000-0000 — apenas para exibicao. */
+  function mascaraPedido(p) {
+    const d = numeroPedido(p);
+    const local = d.length === 13 ? d.slice(2) : d;
+    if (!local) return "";
+    if (local.length <= 2) return "(" + local;
+    if (local.length <= 6) return "(" + local.slice(0, 2) + ") " + local.slice(2);
+    if (local.length <= 10) return "(" + local.slice(0, 2) + ") " + local.slice(2, 6) + "-" + local.slice(6);
+    return "(" + local.slice(0, 2) + ") " + local.slice(2, 7) + "-" + local.slice(7);
+  }
+  function linkWhatsApp(p, texto) {
+    const num = numeroPedido(p);
+    if (!num) return "";
+    return "https://wa.me/" + num + (texto ? "?text=" + encodeURIComponent(texto) : "");
+  }
+  /* Mensagem enviada ao cliente quando o status do pedido muda. */
+  function mensagemStatus(p) {
+    const rotulo = (STATUS_PEDIDO.find((s) => s.id === p.status) || { label: p.status || "Atualizado" }).label;
+    const itens = Array.isArray(p.itens) ? p.itens : [];
+    const linhas = [
+      "Ola, " + (p.nome || "cliente") + "! Aqui e da SpaceTek.",
+      "",
+      "Atualizamos o status do seu pedido " + (p.id ? p.id.slice(0, 8).toUpperCase() : "") + ":",
+      rotulo + ".",
+      "",
+      "Itens:"
+    ];
+    itens.forEach((i) => {
+      linhas.push("- " + (i.nome || i.id || "Item") + " x" + (i.qtd || 1) +
+        (i.preco != null ? " — " + formatBRL(i.preco * (i.qtd || 1)) : ""));
+    });
+    if (!itens.length) linhas.push("- (sem itens)");
+    linhas.push("");
+    if (p.frete && p.frete.valor != null && !p.frete.gratis) {
+      linhas.push("Frete: " + formatBRL(p.frete.valor));
+    }
+    linhas.push("Total: " + (p.total != null ? formatBRL(p.total) : "a combinar"));
+    return linhas.join("\n");
+  }
+
   function AbaPedidos({ getIdToken }) {
     const worker = window.WORKER_URL || "https://spacetek-frete.spacetek.workers.dev";
     const [pedidos, setPedidos] = React.useState([]);
     const [carregando, setCarregando] = React.useState(false);
     const [erro, setErro] = React.useState("");
     const [filtro, setFiltro] = React.useState("todos");
+    const [busca, setBusca] = React.useState("");
     const [atualizando, setAtualizando] = React.useState(null);
+    const [avisos, setAvisos] = React.useState({});
 
     const carregar = async () => {
       setCarregando(true);
@@ -1360,82 +1440,176 @@
 
     React.useEffect(() => { carregar(); }, []);
 
-    const atualizar = async (id, status) => {
-      setAtualizando(id);
+    /* Salva o novo status e avisa o cliente pelo WhatsApp (link wa.me). */
+    const atualizar = async (p, status) => {
+      if (!status || status === p.status) return;
+      setAtualizando(p.id);
+      const aviso = (texto, tipo) => setAvisos((a) => Object.assign({}, a, { [p.id]: { texto: texto, tipo: tipo } }));
       try {
         const token = await getIdToken();
-        await fetch(worker + "/orders/" + id, { method: "PATCH", headers: { "Content-Type": "application/json", "Authorization": token ? "Bearer " + token : "" }, body: JSON.stringify({ status: status }) });
+        const resp = await fetch(worker + "/orders/" + p.id, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", "Authorization": token ? "Bearer " + token : "" },
+          body: JSON.stringify({ status: status })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) { aviso(data.erro || "Falha ao atualizar o status.", "erro"); setAtualizando(null); return; }
+        /* Objeto local atualizado: a lista recarrega em seguida. */
+        const novo = Object.assign({}, p, { status: data.status || status });
+        setPedidos((lista) => lista.map((x) => (x.id === p.id ? novo : x)));
+        const link = linkWhatsApp(novo, mensagemStatus(novo));
+        if (link) {
+          window.open(link, "_blank");
+          aviso("Status atualizado. O WhatsApp do cliente foi aberto com a mensagem pronta.", "ok");
+        } else {
+          aviso("Status atualizado. Este pedido nao tem WhatsApp cadastrado.", "aviso");
+        }
         await carregar();
-      } catch (e) {}
+      } catch (e) {
+        aviso("Falha ao atualizar o status.", "erro");
+      }
       setAtualizando(null);
     };
 
-    const lista = pedidos.filter((p) => filtro === "todos" ? true : p.status === filtro);
-    const statusLabel = { novo: "Novo", em_andamento: "Em andamento", enviado: "Enviado", entregue: "Entregue", cancelado: "Cancelado" };
-    const statusCor = { novo: "badge-destaque", em_andamento: "badge-novo", enviado: "badge-ok", entregue: "badge-ok", cancelado: "badge-esgotado" };
+    /* Reenvia a mensagem de status sem alterar o status atual. */
+    const notificar = (p) => {
+      const link = linkWhatsApp(p, mensagemStatus(p));
+      if (!link) {
+        setAvisos((a) => Object.assign({}, a, { [p.id]: { texto: "Este pedido nao tem WhatsApp cadastrado.", tipo: "erro" } }));
+        return;
+      }
+      window.open(link, "_blank");
+      setAvisos((a) => Object.assign({}, a, { [p.id]: { texto: "Mensagem de status aberta no WhatsApp do cliente.", tipo: "ok" } }));
+    };
 
-    return h("section", { className: "admin-section" },
-      h("div", { className: "admin-section__head" },
-        h("div", null,
-          h("h2", null, "Pedidos"),
-          h("p", null, "Pedidos registrados via site (checkout 'Registrar + abrir WhatsApp').")
-        ),
-        h("div", { className: "admin-section__actions" },
-          h("select", { value: filtro, onChange: (e) => setFiltro(e.target.value), className: "admin-select" },
-            h("option", { value: "todos" }, "Todos"),
-            h("option", { value: "novo" }, "Novos"),
-            h("option", { value: "em_andamento" }, "Em andamento"),
-            h("option", { value: "enviado" }, "Enviados"),
-            h("option", { value: "entregue" }, "Entregues"),
-            h("option", { value: "cancelado" }, "Cancelados")
+    /* Filtro por status + busca por nome, id ou telefone. */
+    const termo = busca.trim().toLowerCase();
+    const lista = pedidos.filter((p) => {
+      if (filtro !== "todos" && p.status !== filtro) return false;
+      if (!termo) return true;
+      const alvo = [p.id, p.nome, p.whatsapp, p.contato, p.cep].join(" ").toLowerCase();
+      return alvo.indexOf(termo) >= 0;
+    });
+
+    const contagem = (id) => pedidos.filter((p) => (id === "todos" ? true : p.status === id)).length;
+    const receita = pedidos.reduce((s, p) => s + (p.total != null ? Number(p.total) : 0), 0);
+    const statusLabel = {};
+    const statusCor = {};
+    STATUS_PEDIDO.forEach((s) => { statusLabel[s.id] = s.label; statusCor[s.id] = s.classe; });
+
+    const chip = (id, label) => h("button", {
+      type: "button",
+      className: "pedido-chip" + (filtro === id ? " pedido-chip--on" : ""),
+      onClick: () => setFiltro(id)
+    }, h("span", null, label), h("em", null, String(contagem(id))));
+
+    const cartaoPedido = (p) => {
+      const itens = Array.isArray(p.itens) ? p.itens : [];
+      const total = p.total != null ? formatBRL(p.total) : (p.subtotal != null ? formatBRL(p.subtotal) : "-");
+      const aviso = avisos[p.id];
+      const historico = Array.isArray(p.historico) ? p.historico.slice().reverse() : [];
+      return h("article", { className: "pedido-card" + (p.status === "novo" ? " pedido-card--novo" : "") },
+        h("header", { className: "pedido-card__top" },
+          h("div", null,
+            h("strong", { className: "pedido-card__id" }, p.id ? p.id.slice(0, 8).toUpperCase() : "-"),
+            h("span", { className: "pedido-card__data" }, dataHora(p.criadoEm))
           ),
-          h("button", { type: "button", className: "btn btn--ghost btn--sm", onClick: carregar }, carregando ? "Atualizando..." : "Atualizar")
+          h("span", { className: "badge " + (statusCor[p.status] || "badge-novo") }, statusLabel[p.status] || p.status || "novo")
+        ),
+        h("div", { className: "pedido-card__cliente" },
+          h("strong", null, p.nome || "-"),
+          p.whatsapp
+            ? h("a", { className: "pedido-card__wpp", href: linkWhatsApp(p), target: "_blank", rel: "noopener" }, mascaraPedido(p))
+            : h("span", { className: "pedido-card__sem-wpp" }, "Sem WhatsApp"),
+          p.contato && h("span", { className: "pedido-card__meta" }, p.contato),
+          (p.cep || p.endereco) && h("span", { className: "pedido-card__meta" },
+            "CEP " + (p.cep || "-") + (p.endereco ? " · " + p.endereco : ""))
+        ),
+        itens.length > 0 && h("ul", { className: "pedido-card__itens" },
+          itens.map((i, k) => h("li", { key: k },
+            h("span", { className: "pedido-card__item-nome" }, (i.nome || i.id || "Item") + " x" + (i.qtd || 1)),
+            h("span", { className: "pedido-card__item-valor" },
+              i.preco != null ? formatBRL(i.preco * (i.qtd || 1)) : "a combinar")
+          ))
+        ),
+        p.obs && h("p", { className: "pedido-card__obs" }, "Obs: " + p.obs),
+        h("div", { className: "pedido-card__totais" },
+          h("span", null, "Subtotal: " + (p.subtotal != null ? formatBRL(p.subtotal) : "-")),
+          h("span", null, "Frete: " + (p.frete ? (p.frete.gratis ? "grátis" : formatBRL(p.frete.valor)) : "-")),
+          h("strong", null, "Total: " + total)
+        ),
+        historico.length > 0 && h("details", { className: "pedido-card__historico" },
+          h("summary", null, "Historico (" + historico.length + ")"),
+          h("ul", null, historico.map((hs, k) => h("li", { key: k },
+            (statusLabel[hs.status] || hs.status) + " · " + dataHora(hs.em))))
+        ),
+        aviso && h("p", { className: "pedido-card__aviso pedido-card__aviso--" + (aviso.tipo || "ok") }, aviso.texto),
+        h("footer", { className: "pedido-card__acoes" },
+          h("select", {
+            value: p.status || "novo", disabled: atualizando === p.id, className: "admin-select admin-select--sm",
+            onChange: (e) => atualizar(p, e.target.value)
+          }, STATUS_PEDIDO.map((s) => h("option", { key: s.id, value: s.id }, s.label))),
+          h("button", {
+            type: "button", className: "btn btn--ghost btn--sm", disabled: !p.whatsapp,
+            title: p.whatsapp ? "Abre o WhatsApp do cliente com o status atual" : "Pedido sem WhatsApp",
+            onClick: () => notificar(p)
+          }, "Notificar cliente"),
+          h("a", {
+            className: "btn btn--ghost btn--sm", href: linkWhatsApp(p) || "#",
+            target: "_blank", rel: "noopener", onClick: (e) => { if (!p.whatsapp) e.preventDefault(); }
+          }, "Abrir WhatsApp")
         )
-      ),
-      erro && h("p", { className: "admin__msg admin__msg--erro" }, erro),
-      lista.length === 0 && !carregando && h("p", { className: "drawer__empty" }, "Nenhum pedido encontrado."),
-      lista.length > 0 && h("div", { className: "admin-tablewrap" },
-        h("table", { className: "admin-table" },
-          h("thead", null,
-            h("tr", null,
-              h("th", null, "Pedido"),
-              h("th", null, "Cliente"),
-              h("th", null, "Itens"),
-              h("th", null, "Total"),
-              h("th", null, "Status"),
-              h("th", { className: "admin-table__acoes" }, "Acoes")
+      );
+    };
+
+    return h("div", { className: "admin-tab" },
+      h("section", { className: "admin-card" },
+        h("div", { className: "admin-card__head" },
+          h("h2", null, "Pedidos"),
+          h("span", { className: "admin-card__hint" }, "Pedidos confirmados pelo checkout do site"),
+          h("div", { className: "admin-card__acoes" },
+            h("button", { type: "button", className: "btn btn--ghost btn--sm", onClick: carregar },
+              carregando ? "Atualizando..." : "Atualizar")
+          )
+        ),
+        h("div", { className: "admin-card__body" },
+          h("div", { className: "admin-stats" },
+            h("div", { className: "admin-stat" },
+              h("span", { className: "admin-stat__valor" }, String(pedidos.length)),
+              h("span", { className: "admin-stat__titulo" }, "Pedidos"),
+              h("span", { className: "admin-stat__nota" }, "Total registrado")
+            ),
+            h("div", { className: "admin-stat" },
+              h("span", { className: "admin-stat__valor" }, String(contagem("novo"))),
+              h("span", { className: "admin-stat__titulo" }, "Aguardando"),
+              h("span", { className: "admin-stat__nota" }, "Status novo")
+            ),
+            h("div", { className: "admin-stat" },
+              h("span", { className: "admin-stat__valor" }, String(contagem("em_andamento"))),
+              h("span", { className: "admin-stat__titulo" }, "Em producao"),
+              h("span", { className: "admin-stat__nota" }, "Em andamento")
+            ),
+            h("div", { className: "admin-stat" },
+              h("span", { className: "admin-stat__valor" }, formatBRL(receita)),
+              h("span", { className: "admin-stat__titulo" }, "Valor total"),
+              h("span", { className: "admin-stat__nota" }, "Soma dos pedidos")
             )
           ),
-          h("tbody", null,
-            lista.map((p) => {
-              const total = p.total != null ? formatBRL(p.total) : (p.subtotal != null ? formatBRL(p.subtotal) : "-");
-              const itens = Array.isArray(p.itens) ? p.itens : [];
-              return h("tr", { key: p.id },
-                h("td", null,
-                  h("strong", null, p.id ? p.id.slice(0,8) : "-"),
-                  h("br", null),
-                  h("span", { className: "admin-cell__sub" }, p.criadoEm ? dataHora(p.criadoEm) : "")
-                ),
-                h("td", null,
-                  h("div", null, h("strong", null, p.nome || "-")),
-                  p.contato && h("div", { className: "admin-cell__sub" }, p.contato),
-                  p.cep && h("div", { className: "admin-cell__sub" }, "CEP: " + p.cep)
-                ),
-                h("td", null, itens.map((i) => (i.nome || i.id) + " x" + (i.qtd||1)).join(", ")),
-                h("td", null, h("strong", null, total)),
-                h("td", null, h("span", { className: statusCor[p.status] || "badge-novo" }, statusLabel[p.status] || p.status || "novo")),
-                h("td", { className: "admin-table__acoes" },
-                  h("select", { value: p.status || "novo", disabled: atualizando === p.id, onChange: (e) => atualizar(p.id, e.target.value), className: "admin-select admin-select--sm" },
-                    h("option", { value: "novo" }, "Novo"),
-                    h("option", { value: "em_andamento" }, "Em andamento"),
-                    h("option", { value: "enviado" }, "Enviado"),
-                    h("option", { value: "entregue" }, "Entregue"),
-                    h("option", { value: "cancelado" }, "Cancelado")
-                  )
-                )
-              );
-            })
-          )
+          h("div", { className: "pedido-filtros" },
+            h("input", {
+              className: "pedido-busca", type: "search", value: busca,
+              placeholder: "Buscar por nome, id ou telefone...",
+              onChange: (e) => setBusca(e.target.value)
+            }),
+            h("div", { className: "pedido-chips" },
+              chip("todos", "Todos"),
+              STATUS_PEDIDO.map((s) => chip(s.id, s.label))
+            )
+          ),
+          erro && h("p", { className: "admin__msg admin__msg--erro" }, erro),
+          lista.length === 0 && !carregando && h("p", { className: "drawer__empty" },
+            pedidos.length === 0 ? "Nenhum pedido registrado ainda." : "Nenhum pedido encontrado com esse filtro."),
+          lista.length > 0 && h("div", { className: "pedido-lista" }, lista.map(cartaoPedido))
         )
       )
     );
