@@ -1272,9 +1272,16 @@
       }
     };
 
-    const irPara = (f) => { setFiltro(Object.assign({ seq: Date.now() }, f || {})); setAba("catalogo"); };
+      const irPara = (f) => { setFiltro(Object.assign({ seq: Date.now() }, f || {})); setAba("catalogo"); };
 
-    const sair = () => { if (window.fbAuth) window.fbAuth.signOut(); };
+      const getIdToken = async () => {
+        try {
+          if (window.fbAuth && window.fbAuth.currentUser) return await window.fbAuth.currentUser.getIdToken();
+        } catch (e) {}
+        return "";
+      };
+
+      const sair = () => { if (window.fbAuth) window.fbAuth.signOut(); };
 
     if (!pronto) {
       return h("div", { className: "admin-boot" },
@@ -1285,11 +1292,12 @@
       return h(AdminLogin, { onSuccess: () => {} });
     }
 
-    const abas = [
-      { id: "catalogo", label: "Catalogo" },
-      { id: "frete", label: "Frete" },
-      { id: "resumo", label: "Resumo" }
-    ];
+      const abas = [
+        { id: "catalogo", label: "Catalogo" },
+        { id: "frete", label: "Frete" },
+        { id: "pedidos", label: "Pedidos" },
+        { id: "resumo", label: "Resumo" }
+      ];
 
     return h("div", { className: "admin" },
       h("header", { className: "admin-topbar" },
@@ -1311,13 +1319,124 @@
           h("button", { type: "button", className: "btn btn--ghost btn--sm", onClick: sair }, "Sair")
         )
       ),
-      h("main", { className: "admin-main" },
-        aba === "catalogo"
-          ? h(AbaCatalogo, { produtos: produtos || [], hero: cfg.hero, salvarHero: salvarHero,
-              filtro: filtro, padroes: cfg.dadosPadrao, salvarPadroes: salvarPadroes })
-          : aba === "frete"
-            ? h(AbaFrete, { frete: cfg.frete, onSalvar: salvarFrete })
-            : h(AbaResumo, { produtos: produtos || [], cfg: cfg, irPara: irPara })
+        h("main", { className: "admin-main" },
+          aba === "catalogo"
+            ? h(AbaCatalogo, { produtos: produtos || [], hero: cfg.hero, salvarHero: salvarHero,
+                filtro: filtro, padroes: cfg.dadosPadrao, salvarPadroes: salvarPadroes })
+            : aba === "frete"
+              ? h(AbaFrete, { frete: cfg.frete, onSalvar: salvarFrete })
+              : aba === "pedidos"
+                ? h(AbaPedidos, { getIdToken: getIdToken })
+                : h(AbaResumo, { produtos: produtos || [], cfg: cfg, irPara: irPara })
+        )
+    );
+  }
+
+  /* ---------- Aba: Pedidos ---------- */
+  function AbaPedidos({ getIdToken }) {
+    const worker = window.WORKER_URL || "https://spacetek-frete.spacetek.workers.dev";
+    const [pedidos, setPedidos] = React.useState([]);
+    const [carregando, setCarregando] = React.useState(false);
+    const [erro, setErro] = React.useState("");
+    const [filtro, setFiltro] = React.useState("todos");
+    const [atualizando, setAtualizando] = React.useState(null);
+
+    const carregar = async () => {
+      setCarregando(true);
+      setErro("");
+      try {
+        const token = await getIdToken();
+        const resp = await fetch(worker + "/orders", { headers: { "Authorization": token ? "Bearer " + token : "" } });
+        const data = await resp.json().catch(() => ({ pedidos: [] }));
+        if (resp.status === 403) { setErro("Nao autorizado. Configure ADMIN_EMAILS ou faca login com conta autorizada."); setPedidos([]); }
+        else if (data.pedidos) setPedidos(data.pedidos);
+        else setPedidos([]);
+      } catch (e) {
+        setErro("Falha ao carregar pedidos.");
+        setPedidos([]);
+      }
+      setCarregando(false);
+    };
+
+    React.useEffect(() => { carregar(); }, []);
+
+    const atualizar = async (id, status) => {
+      setAtualizando(id);
+      try {
+        const token = await getIdToken();
+        await fetch(worker + "/orders/" + id, { method: "PATCH", headers: { "Content-Type": "application/json", "Authorization": token ? "Bearer " + token : "" }, body: JSON.stringify({ status: status }) });
+        await carregar();
+      } catch (e) {}
+      setAtualizando(null);
+    };
+
+    const lista = pedidos.filter((p) => filtro === "todos" ? true : p.status === filtro);
+    const statusLabel = { novo: "Novo", em_andamento: "Em andamento", enviado: "Enviado", entregue: "Entregue", cancelado: "Cancelado" };
+    const statusCor = { novo: "badge-destaque", em_andamento: "badge-novo", enviado: "badge-ok", entregue: "badge-ok", cancelado: "badge-esgotado" };
+
+    return h("section", { className: "admin-section" },
+      h("div", { className: "admin-section__head" },
+        h("div", null,
+          h("h2", null, "Pedidos"),
+          h("p", null, "Pedidos registrados via site (checkout 'Registrar + abrir WhatsApp').")
+        ),
+        h("div", { className: "admin-section__actions" },
+          h("select", { value: filtro, onChange: (e) => setFiltro(e.target.value), className: "admin-select" },
+            h("option", { value: "todos" }, "Todos"),
+            h("option", { value: "novo" }, "Novos"),
+            h("option", { value: "em_andamento" }, "Em andamento"),
+            h("option", { value: "enviado" }, "Enviados"),
+            h("option", { value: "entregue" }, "Entregues"),
+            h("option", { value: "cancelado" }, "Cancelados")
+          ),
+          h("button", { type: "button", className: "btn btn--ghost btn--sm", onClick: carregar }, carregando ? "Atualizando..." : "Atualizar")
+        )
+      ),
+      erro && h("p", { className: "admin__msg admin__msg--erro" }, erro),
+      lista.length === 0 && !carregando && h("p", { className: "drawer__empty" }, "Nenhum pedido encontrado."),
+      lista.length > 0 && h("div", { className: "admin-tablewrap" },
+        h("table", { className: "admin-table" },
+          h("thead", null,
+            h("tr", null,
+              h("th", null, "Pedido"),
+              h("th", null, "Cliente"),
+              h("th", null, "Itens"),
+              h("th", null, "Total"),
+              h("th", null, "Status"),
+              h("th", { className: "admin-table__acoes" }, "Acoes")
+            )
+          ),
+          h("tbody", null,
+            lista.map((p) => {
+              const total = p.total != null ? formatBRL(p.total) : (p.subtotal != null ? formatBRL(p.subtotal) : "-");
+              const itens = Array.isArray(p.itens) ? p.itens : [];
+              return h("tr", { key: p.id },
+                h("td", null,
+                  h("strong", null, p.id ? p.id.slice(0,8) : "-"),
+                  h("br", null),
+                  h("span", { className: "admin-cell__sub" }, p.criadoEm ? dataHora(p.criadoEm) : "")
+                ),
+                h("td", null,
+                  h("div", null, h("strong", null, p.nome || "-")),
+                  p.contato && h("div", { className: "admin-cell__sub" }, p.contato),
+                  p.cep && h("div", { className: "admin-cell__sub" }, "CEP: " + p.cep)
+                ),
+                h("td", null, itens.map((i) => (i.nome || i.id) + " x" + (i.qtd||1)).join(", ")),
+                h("td", null, h("strong", null, total)),
+                h("td", null, h("span", { className: statusCor[p.status] || "badge-novo" }, statusLabel[p.status] || p.status || "novo")),
+                h("td", { className: "admin-table__acoes" },
+                  h("select", { value: p.status || "novo", disabled: atualizando === p.id, onChange: (e) => atualizar(p.id, e.target.value), className: "admin-select admin-select--sm" },
+                    h("option", { value: "novo" }, "Novo"),
+                    h("option", { value: "em_andamento" }, "Em andamento"),
+                    h("option", { value: "enviado" }, "Enviado"),
+                    h("option", { value: "entregue" }, "Entregue"),
+                    h("option", { value: "cancelado" }, "Cancelado")
+                  )
+                )
+              );
+            })
+          )
+        )
       )
     );
   }
