@@ -345,8 +345,188 @@
     );
   }
 
+  /* ---------- Assistente: preencher os dados que faltam ----------
+     Preenche peso/medidas/preco das pecas com um padrao por categoria.
+     Os valores sao PROVISORIOS: o usuario ajusta cada peca depois. */
+  const PADRAO_CATEGORIA = {
+    decoracao: { peso: 100, comprimento: 10, largura: 10, altura: 10, preco: 49.90 },
+    colecionaveis: { peso: 90, comprimento: 8, largura: 6, altura: 10, preco: 99.90 },
+    iluminacao: { peso: 400, comprimento: 19, largura: 19, altura: 23, preco: 189.90 },
+    escritorio: { peso: 120, comprimento: 12, largura: 10, altura: 10, preco: 39.90 },
+    utilidades: { peso: 90, comprimento: 10, largura: 10, altura: 6, preco: 34.90 },
+    personalizados: { peso: 80, comprimento: 8, largura: 8, altura: 8, preco: 44.90 }
+  };
+  const PADRAO_GENERICO = { peso: 100, comprimento: 10, largura: 10, altura: 10, preco: 49.90 };
+
+  function semAcento(t) {
+    return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  }
+  function chavePadrao(categoria) {
+    return semAcento(categoria).replace(/[^a-z0-9]+/g, "");
+  }
+  function numDe(v) {
+    if (v === null || v === undefined) return null;
+    const s = String(v).trim().replace(",", ".");
+    if (s === "") return null;
+    const n = Number(s);
+    return isFinite(n) ? n : null;
+  }
+  function fmtNum(v) {
+    const n = Number(v);
+    if (!isFinite(n)) return "";
+    return String(n).replace(".", ",");
+  }
+  function dimTextoBR(c, l, a) {
+    if (c == null || l == null || a == null) return "";
+    if (!(c > 0 && l > 0 && a > 0)) return "";
+    return fmtNum(c) + " x " + fmtNum(l) + " x " + fmtNum(a) + " cm";
+  }
+  /* O que falta em cada peca e o valor que sera gravado. */
+  function calcularAlteracoes(produtos, padroes, corrigirPesoEstranho) {
+    const out = [];
+    (produtos || []).forEach((p) => {
+      const pad = (padroes && padroes[chavePadrao(p.categoria)]) || PADRAO_GENERICO;
+      const mud = {};
+      const dm = parseDimensoes(p.dimensoes);
+      const c0 = numDe(p.comprimento), l0 = numDe(p.largura), a0 = numDe(p.altura);
+      let c = c0 > 0 ? c0 : numDe(dm.comprimento);
+      let l = l0 > 0 ? l0 : numDe(dm.largura);
+      let a = a0 > 0 ? a0 : numDe(dm.altura);
+      const medidasMudam = !(c0 > 0 && l0 > 0 && a0 > 0);
+      if (!(c > 0 && l > 0 && a > 0)) {
+        c = numDe(pad.comprimento); l = numDe(pad.largura); a = numDe(pad.altura);
+        if (!(c > 0 && l > 0 && a > 0)) { c = 10; l = 10; a = 10; }
+      }
+      if (medidasMudam) { mud.comprimento = c; mud.largura = l; mud.altura = a; }
+      const peso = numDe(p.peso);
+      const pesoEstranho = peso != null && peso > 0 && peso < 10;
+      if (peso == null || peso <= 0 || (pesoEstranho && corrigirPesoEstranho)) mud.peso = numDe(pad.peso);
+      if (precoDe(p) == null) mud.preco = numDe(pad.preco);
+      const textoNovo = dimTextoBR(c, l, a);
+      if (textoNovo && medidasMudam && textoNovo !== (p.dimensoes || "")) mud.dimensoes = textoNovo;
+      if (Object.keys(mud).length) {
+        out.push({ peca: p, mud: mud, pesoEstranho: pesoEstranho && !corrigirPesoEstranho });
+      }
+    });
+    return out;
+  }
+
+  function AssistenteDados({ produtos, padroes, onSalvarPadroes, onAplicar, onFechar, aplicando }) {
+    const [pad, setPad] = React.useState(() => {
+      const base = {};
+      Object.keys(PADRAO_CATEGORIA).forEach((k) => { base[k] = Object.assign({}, PADRAO_CATEGORIA[k]); });
+      Object.assign(base, padroes || {});
+      return base;
+    });
+    const [corrigirPeso, setCorrigirPeso] = React.useState(false);
+    const [desmarca, setDesmarca] = React.useState({});
+
+    const categorias = Array.from(new Set((produtos || []).map((p) => p.categoria).filter(Boolean))).sort();
+    const chaves = categorias.map(chavePadrao).filter((k, i, a) => a.indexOf(k) === i);
+    const alteracoes = React.useMemo(
+      () => calcularAlteracoes(produtos, pad, corrigirPeso),
+      [produtos, pad, corrigirPeso]);
+    const marcadas = alteracoes.filter((a) => !desmarca[a.peca.id]);
+    const marcadasSet = new Set(marcadas.map((a) => a.peca.id));
+
+    const setCampo = (chave, campo, valor) => {
+      setPad((ant) => {
+        const atual = Object.assign({}, PADRAO_GENERICO, ant[chave] || {});
+        const novo = Object.assign({}, atual);
+        novo[campo] = valor === "" ? "" : numDe(valor);
+        const copia = Object.assign({}, ant);
+        copia[chave] = novo;
+        return copia;
+      });
+    };
+
+    const numero = (rotulo, chave, campo, valor, extra) => h("label", { className: "admin-mini" },
+      h("span", null, rotulo),
+      h("input", { type: "number", step: "any", min: "0", value: valor == null ? "" : valor,
+        onChange: (e) => setCampo(chave, campo, e.target.value), ...extra })
+    );
+
+    const chips = (a) => {
+      const itens = [];
+      if (a.mud.peso != null) itens.push(h("span", { className: "admin-chip" },
+        "peso ", h("b", null, a.mud.peso + " g"),
+        h("em", null, " (era " + (numDe(a.peca.peso) != null ? numDe(a.peca.peso) + " g" : "vazio") + ")")));      if (a.mud.comprimento != null) itens.push(h("span", { className: "admin-chip" },
+        "medidas ", h("b", null, dimTextoBR(a.mud.comprimento, a.mud.largura, a.mud.altura))));
+      if (a.mud.preco != null) itens.push(h("span", { className: "admin-chip" },
+        "preco ", h("b", null, formatBRL(a.mud.preco)), h("em", null, " (era sob consulta)")));
+      return h("div", { className: "admin-chips" }, itens);
+    };
+
+    return h(React.Fragment, null,
+      h("div", { className: "admin-secao" },
+        h("h3", null, "Padroes por categoria"),
+        h("p", { className: "admin-card__hint" },
+          "Valores provisorios aplicados apenas nos campos vazios. Voce pode ajustar aqui: os valores ficam salvos para as proximas vezes."),
+        h("div", { className: "admin-padroes" },
+          chaves.map((chave) => {
+            const cat = categorias.find((c) => chavePadrao(c) === chave) || chave;
+            const v = Object.assign({}, PADRAO_GENERICO, pad[chave] || {});
+            return h("div", { className: "admin-padrao", key: chave },
+              h("div", { className: "admin-padrao__nome" }, cat),
+              h("div", { className: "admin-padrao__campos" },
+                numero("peso (g)", chave, "peso", v.peso),
+                numero("comp (cm)", chave, "comprimento", v.comprimento),
+                numero("larg (cm)", chave, "largura", v.largura),
+                numero("alt (cm)", chave, "altura", v.altura),
+                numero("preco (R$)", chave, "preco", v.preco)
+              )
+            );
+          })
+        )
+      ),
+      h("div", { className: "admin-secao" },
+        h("h3", null, "O que sera atualizado"),
+        alteracoes.length === 0
+          ? h("p", { className: "admin__hint-medidas" }, "Todas as pecas ja tem peso, medidas e preco.")
+          : h(React.Fragment, null,
+              h("div", { className: "admin-tools admin-tools--fim" },
+                h("label", { className: "check check--compact" },
+                  h("input", { type: "checkbox", checked: corrigirPeso,
+                    onChange: (e) => setCorrigirPeso(e.target.checked) }),
+                  h("span", null, "corrigir peso menor que 10 g")
+                ),
+                h("button", { type: "button", className: "link", onClick: () => setDesmarca({}) },
+                  "marcar todas"),
+                h("button", { type: "button", className: "link", onClick: () => {
+                  const todos = {};
+                  alteracoes.forEach((a) => { todos[a.peca.id] = true; });
+                  setDesmarca(todos);
+                } }, "desmarcar todas")
+              ),
+              h("ul", { className: "admin-lista" },
+                alteracoes.map((a) => h("li", { key: a.peca.id, className: "admin-lista__item" },
+                  h("label", { className: "admin-lista__principal" },
+                    h("input", { type: "checkbox", checked: marcadasSet.has(a.peca.id),
+                      onChange: (e) => setDesmarca((ant) => {
+                        const c = Object.assign({}, ant);
+                        if (e.target.checked) delete c[a.peca.id]; else c[a.peca.id] = true;
+                        return c;
+                      }) }),
+                    h("span", { className: "admin-lista__nome" }, a.peca.nome),
+                    h("span", { className: "admin-cell__sub" }, a.peca.categoria || ""),
+                    a.pesoEstranho && h("span", { className: "badge-alerta" }, "peso estranho: " + numDe(a.peca.peso) + " g")
+                  ),
+                  chips(a)
+                ))
+              )
+            )
+      ),
+      h("div", { className: "admin-form__acoes" },
+        h("button", { type: "button", className: "btn btn--ghost", onClick: onFechar }, "Cancelar"),
+        h("button", { type: "button", className: "btn btn--primary", disabled: aplicando || marcadas.length === 0,
+          onClick: () => { onSalvarPadroes(pad); onAplicar(marcadas); } },
+          aplicando ? "Aplicando..." : ("Aplicar em " + marcadas.length + " pecas"))
+      )
+    );
+  }
+
   /* ---------- Aba: Catalogo ---------- */
-  function AbaCatalogo({ produtos, hero, salvarHero, filtro }) {
+  function AbaCatalogo({ produtos, hero, salvarHero, filtro, padroes, salvarPadroes }) {
     const [busca, setBusca] = React.useState("");
     const [secFiltro, setSecFiltro] = React.useState("todos");
     const [soDestaque, setSoDestaque] = React.useState(false);
@@ -354,9 +534,11 @@
     const [soSemPreco, setSoSemPreco] = React.useState(false);
     const [formAberto, setFormAberto] = React.useState(false);
     const [editando, setEditando] = React.useState(null);
+    const [assistenteAberto, setAssistenteAberto] = React.useState(false);
     const [msg, setMsg] = React.useState(null);
     const [salvando, setSalvando] = React.useState(false);
     const [importando, setImportando] = React.useState(false);
+    const [aplicando, setAplicando] = React.useState(false);
     const [ordenando, setOrdenando] = React.useState(false);
 
     /* Filtro vindo do Resumo (clique em um card). */
@@ -373,17 +555,36 @@
     const abrirEdicao = (p) => { setEditando(p); setFormAberto(true); mostrarMsg("", false); };
     const fecharForm = () => { setFormAberto(false); setEditando(null); };
 
-    React.useEffect(() => {
-      document.body.classList.toggle("no-scroll", formAberto);
-      return () => document.body.classList.remove("no-scroll");
-    }, [formAberto]);
+    /* Aplica as alteracoes do assistente em lote (um update por peca). */
+    const aplicarDados = async (alteracoes) => {
+      if (!window.fbDb || !alteracoes.length) return;
+      setAplicando(true);
+      mostrarMsg("", false);
+      try {
+        const lote = window.fbDb.batch();
+        const col = window.fbDb.collection("produtos");
+        alteracoes.forEach((a) => lote.update(col.doc(a.peca.id), a.mud));
+        await lote.commit();
+        mostrarMsg(alteracoes.length + " pecas atualizadas com os dados padrao.", false);
+        setAssistenteAberto(false);
+      } catch (err) {
+        mostrarMsg("Erro ao aplicar: " + (err.message || err), true);
+      } finally {
+        setAplicando(false);
+      }
+    };
 
     React.useEffect(() => {
-      if (!formAberto) return;
-      const onKey = (e) => { if (e.key === "Escape") fecharForm(); };
+      document.body.classList.toggle("no-scroll", formAberto || assistenteAberto);
+      return () => document.body.classList.remove("no-scroll");
+    }, [formAberto, assistenteAberto]);
+
+    React.useEffect(() => {
+      if (!formAberto && !assistenteAberto) return;
+      const onKey = (e) => { if (e.key === "Escape") { fecharForm(); setAssistenteAberto(false); } };
       document.addEventListener("keydown", onKey);
       return () => document.removeEventListener("keydown", onKey);
-    }, [formAberto]);
+    }, [formAberto, assistenteAberto]);
 
     const salvarPeca = async (dados) => {
       if (!window.fbDb) { mostrarMsg("Banco de dados indisponivel.", true); return; }
@@ -566,6 +767,8 @@
           h("h2", null, "Catalogo"),
           h("div", { className: "admin-card__acoes" },
             h("button", { type: "button", className: "btn btn--primary", onClick: abrirNovo }, "+ Nova peca"),
+            h("button", { type: "button", className: "btn btn--ghost", onClick: () => { setAssistenteAberto(true); mostrarMsg("", false); } },
+              "Completar dados"),
             h("button", { type: "button", className: "btn btn--ghost", onClick: importar, disabled: importando },
               importando ? "Importando..." : "Importar catalogo atual")
           )
@@ -693,6 +896,28 @@
               salvando: salvando,
               onSalvar: salvarPeca,
               onCancelar: fecharForm
+            })
+          )
+        )
+      ),
+
+      /* Drawer: assistente de dados */
+      assistenteAberto && h(React.Fragment, null,
+        h("div", { className: "overlay overlay--show", onClick: () => setAssistenteAberto(false) }),
+        h("aside", { className: "drawer drawer--open admin-drawer admin-drawer--wide" },
+          h("div", { className: "drawer__head" },
+            h("h2", null, "Completar dados"),
+            h("button", { type: "button", className: "drawer__close",
+              onClick: () => setAssistenteAberto(false), "aria-label": "Fechar" }, "×")
+          ),
+          h("div", { className: "drawer__body" },
+            h(AssistenteDados, {
+              produtos: produtos,
+              padroes: padroes,
+              onSalvarPadroes: salvarPadroes,
+              onAplicar: aplicarDados,
+              onFechar: () => setAssistenteAberto(false),
+              aplicando: aplicando
             })
           )
         )
@@ -1013,7 +1238,7 @@
         unsub = window.fbDb.collection("produtos").doc("_site").onSnapshot(
           (snap) => {
             const d = snap.exists ? snap.data() : {};
-            setCfg({ hero: d.hero, frete: d.frete });
+            setCfg({ hero: d.hero, frete: d.frete, dadosPadrao: d.dadosPadrao || null });
           },
           (err) => { console.warn("Firestore config:", err.code || err.message); }
         );
@@ -1035,6 +1260,16 @@
     const salvarFrete = async (freteObj) => {
       if (!window.fbDb) throw new Error("Banco de dados indisponivel.");
       await window.fbDb.collection("produtos").doc("_site").set({ frete: freteObj }, { merge: true });
+    };
+
+    /* Padroes por categoria (usados pelo assistente "Completar dados"). */
+    const salvarPadroes = async (padroes) => {
+      if (!window.fbDb) return;
+      try {
+        await window.fbDb.collection("produtos").doc("_site").set({ dadosPadrao: padroes }, { merge: true });
+      } catch (err) {
+        console.warn("Falha ao salvar os padroes:", err.code || err.message);
+      }
     };
 
     const irPara = (f) => { setFiltro(Object.assign({ seq: Date.now() }, f || {})); setAba("catalogo"); };
@@ -1078,7 +1313,8 @@
       ),
       h("main", { className: "admin-main" },
         aba === "catalogo"
-          ? h(AbaCatalogo, { produtos: produtos || [], hero: cfg.hero, salvarHero: salvarHero, filtro: filtro })
+          ? h(AbaCatalogo, { produtos: produtos || [], hero: cfg.hero, salvarHero: salvarHero,
+              filtro: filtro, padroes: cfg.dadosPadrao, salvarPadroes: salvarPadroes })
           : aba === "frete"
             ? h(AbaFrete, { frete: cfg.frete, onSalvar: salvarFrete })
             : h(AbaResumo, { produtos: produtos || [], cfg: cfg, irPara: irPara })
