@@ -13,22 +13,20 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.17" />
-  <link rel="stylesheet" href="admin/admin.css?v=2026-10-12.17" />
-  <script>window.__APP_VERSION = "2026-10-12.17";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.18" />
+  <script>window.__APP_VERSION = "2026-10-12.18";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.17"></script>
-  <script src="data/maintenance.js?v=2026-10-12.17"></script>
+  <script src="data/products.js?v=2026-10-12.18"></script>
+  <script src="data/maintenance.js?v=2026-10-12.18"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.16"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.18"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -36,10 +34,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <!-- Helpers compartilhados (site + painel admin) -->
-  <script src="js/comum.js?v=2026-10-12.17"></script>
-
-  <!-- Painel admin (JSX em arquivo separado: o Babel so carrega via http(s)) -->
-  <script type="text/babel" data-presets="react" src="admin/admin-panel.js?v=2026-10-12.17"></script>
+  <script src="js/comum.js?v=2026-10-12.18"></script>
 
   <!-- Aplicacao (JSX inline: o site funciona em file:// sem servidor) -->
   <script type="text/babel" data-presets="react">
@@ -226,7 +221,7 @@
           h("div", { className: "header__left" },
             h("button", { className: "nav__menu", onClick: onToggleMenu, "aria-label": "Abrir menu" }, h(MenuIcon, null)),
             h("a", { className: "brand", href: "#inicio", onClick: logoClick,
-              title: "Clique: início • Duplo clique: área do administrador" },
+              title: "Clique: início • Duplo clique: abrir o painel do administrador" },
               logoOk
                 ? h("img", { className: "brand__logo", src: "assets/images/logo.jpg", alt: "SpaceTek",
                     onError: () => setLogoOk(false) })
@@ -851,18 +846,6 @@
     }
 
     /* ---------- App ---------- */
-    /* ---------- Aviso: painel nao carregou (admin/admin-panel.js) ---------- */
-    function PainelIndisponivel({ onClose }) {
-      return h("div", { className: "modal-overlay" },
-        h("div", { className: "modal admin", role: "dialog" },
-          h("h2", { className: "modal__title" }, "Painel indisponível"),
-          h("p", { className: "admin__user" },
-            "Abra o painel pelo site publicado: https://iagocallado.github.io/spacetek/"),
-          h("button", { className: "btn btn--primary", onClick: onClose }, "Fechar")
-        )
-      );
-    }
-
     function App() {
       const [cart, setCart] = React.useState(() => {
         try { return JSON.parse(localStorage.getItem("spacetek_cart")) || {}; }
@@ -872,8 +855,6 @@
       const [showAll, setShowAll] = React.useState(false);
       const [menuOpen, setMenuOpen] = React.useState(false);
       const [filtro, setFiltro] = React.useState("");
-      const [adminOpen, setAdminOpen] = React.useState(false);
-      const [user, setUser] = React.useState(null);
       const [produtosFs, setProdutosFs] = React.useState(null);
       const [selected, setSelected] = React.useState(null);
       const [cfg, setCfg] = React.useState(null);
@@ -882,11 +863,6 @@
         try { localStorage.setItem("spacetek_cart", JSON.stringify(cart)); }
         catch (e) { /* armazenamento indisponivel (ex.: file://) — ignora */ }
       }, [cart]);
-
-      React.useEffect(() => {
-        if (!window.fbAuth) return;
-        return window.fbAuth.onAuthStateChanged((u) => setUser(u));
-      }, []);
 
       React.useEffect(() => {
         if (!window.fbDb) return;
@@ -951,10 +927,10 @@
 
       /* Trava a rolagem do fundo enquanto um drawer/modal estiver aberto. */
       React.useEffect(() => {
-        const aberto = cartOpen || menuOpen || adminOpen || !!selected;
+        const aberto = cartOpen || menuOpen || !!selected;
         document.body.classList.toggle("no-scroll", aberto);
         return () => document.body.classList.remove("no-scroll");
-      }, [cartOpen, menuOpen, adminOpen, selected]);
+      }, [cartOpen, menuOpen, selected]);
 
       const addItem = (produto) => {
         if (produto.esgotado) return;
@@ -1014,7 +990,13 @@
           onVerTodos: () => { limparFiltro(); setShowAll(true); irPara("catalogo"); },
           onQuemSomos: () => irPara("sobre"),
           onToggleMenu: () => setMenuOpen(true),
-          onLogoAdmin: () => setAdminOpen(true)
+          onLogoAdmin: () => {
+            /* Duplo clique na logo abre o painel em uma aba nova (/admin/). */
+            try {
+              const w = window.open("admin/", "_blank", "noopener");
+              if (w) w.focus();
+            } catch (e) { window.location.href = "admin/"; }
+          }
         }),
         h("main", null,
           h(Hero, { destaques: destaques }),
@@ -1041,23 +1023,7 @@
         h(CartDrawer, { open: cartOpen, onClose: () => setCartOpen(false), items: items,
           onInc: inc, onDec: dec, onRemove: remove }),
         selected && h(ProdutoModal, { produto: selected, onClose: () => setSelected(null),
-          onAdd: (p) => { addItem(p); setSelected(null); setCartOpen(true); } }),
-        adminOpen && (user
-          ? (window.AdminPanel
-              ? h(window.AdminPanel, {
-                  user: user,
-                  produtos: produtosFs || [],
-                  categorias: categorias,
-                  hero: fonteHero,
-                  frete: cfg && cfg.frete,
-                  onClose: () => setAdminOpen(false),
-                  onLogout: () => { if (window.fbAuth) window.fbAuth.signOut(); }
-                })
-              : h(PainelIndisponivel, { onClose: () => setAdminOpen(false) }))
-          : (window.AdminLogin
-              ? h(window.AdminLogin, { onClose: () => setAdminOpen(false), onSuccess: () => {} })
-              : h(PainelIndisponivel, { onClose: () => setAdminOpen(false) }))
-        )
+          onAdd: (p) => { addItem(p); setSelected(null); setCartOpen(true); } })
       );
     }
 

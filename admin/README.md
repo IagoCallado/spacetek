@@ -4,7 +4,9 @@ O painel administrativo é uma **página própria**: `admin/index.html`
 (https://iagocallado.github.io/spacetek/admin/).
 
 No site público, **dois cliques na logo** abrem essa página em uma aba nova.
-O site público não carrega mais nenhum código do painel.
+O site público não carrega mais nenhum código do painel (nem o SDK de Auth do
+Firebase): o modal antigo (`admin/admin-panel.js` + `admin/admin.css`) foi removido
+em favor desta página.
 
 ## Arquivos
 

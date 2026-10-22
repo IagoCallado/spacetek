@@ -15,9 +15,16 @@ window.FIREBASE_CONFIG = {
   if (typeof firebase === "undefined") return;
   try {
     firebase.initializeApp(window.FIREBASE_CONFIG);
-    window.fbAuth = firebase.auth();
     window.fbDb = firebase.firestore();
   } catch (e) {
     console.warn("Falha ao inicializar o Firebase:", e);
+    return;
+  }
+  /* O SDK de Auth so e carregado na pagina do painel (admin/index.html).
+     No site publico nao ha login: por isso o fbAuth e opcional. */
+  try {
+    if (typeof firebase.auth === "function") window.fbAuth = firebase.auth();
+  } catch (e) {
+    console.warn("Firebase Auth indisponivel:", e);
   }
 })();
