@@ -13,20 +13,20 @@
   <meta property="og:description" content="Catálogo de impressões 3D e lançamentos. Solicite seu orçamento pelo WhatsApp." />
   <meta property="og:type" content="website" />
   <link rel="icon" href="assets/images/logo.jpg" />
-  <link rel="stylesheet" href="styles.css?v=2026-10-12.19" />
-  <script>window.__APP_VERSION = "2026-10-12.19";</script>
+  <link rel="stylesheet" href="styles.css?v=2026-10-12.20" />
+  <script>window.__APP_VERSION = "2026-10-12.20";</script>
 </head>
 <body>
   <div id="root"></div>
 
   <!-- Dados (script normal: funciona ao abrir o arquivo direto) -->
-  <script src="data/products.js?v=2026-10-12.19"></script>
-  <script src="data/maintenance.js?v=2026-10-12.19"></script>
+  <script src="data/products.js?v=2026-10-12.20"></script>
+  <script src="data/maintenance.js?v=2026-10-12.20"></script>
 
   <!-- Firebase SDK (compat) via CDN -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="data/firebase-config.js?v=2026-10-12.19"></script>
+  <script src="data/firebase-config.js?v=2026-10-12.20"></script>
 
   <!-- React via CDN -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -34,7 +34,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <!-- Helpers compartilhados (site + painel admin) -->
-  <script src="js/comum.js?v=2026-10-12.19"></script>
+  <script src="js/comum.js?v=2026-10-12.20"></script>
 
   <!-- Aplicacao (JSX inline: o site funciona em file:// sem servidor) -->
   <script type="text/babel" data-presets="react">
@@ -395,6 +395,17 @@
         return () => document.removeEventListener("keydown", onKey);
       }, [onClose]);
 
+      /* Ao abrir o modal, se ja tiver CEP com 8 digitos, cotar pelo endpoint
+         imediatamente para evitar exibir primeiro o valor da tabela. */
+      React.useEffect(() => {
+        const digits = cep.replace(/\D/g, "");
+        if (digits.length === 8) {
+          if (cepTimer.current) clearTimeout(cepTimer.current);
+          cotar(digits);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [produto && produto.id]);
+
       const onCep = (v) => {
         const fmt = formatCep(v);
         setCep(fmt);
@@ -408,15 +419,32 @@
 
       /* freteGratis do painel tem prioridade sobre a cotacao. */
       const gratis = !!(estatico && estatico.gratis);
-      const temOpcoes = !!opcoes && opcoes.length > 0 && !gratis;
+      const endpoint = (window.FRETE_CONFIG || {}).endpoint || "";
+      const temMedidasItem = temMedidasFrete(itemUnico);
+      /* Prioriza o endpoint: so usa a tabela como fallback depois da tentativa
+         remota falhar, ou quando nao houver endpoint/medidas para cotar. */
+      const podeReal = !!endpoint && !!opcoes && opcoes.length > 0 && !gratis && temMedidasItem;
+      const temOpcoes = podeReal;
       const opcaoSelObj = temOpcoes
         ? (opcoes.find((o) => o.id === opcaoSel) || opcoes[0])
         : null;
-      /* Valor exibido: opcao real escolhida; senão a tabela da reserva. */
-      const freteValor = temOpcoes ? opcaoSelObj.preco
-        : (estatico && !estatico.aCombinar ? (estatico.gratis ? 0 : estatico.valor) : null);
+      /* Valor exibido: opcao real escolhida quando disponivel; senao tabela como
+         fallback. Enquanto cotando e sem opcoes, nao exibe valor numerico da tabela. */
+      let freteValor = null;
+      if (podeReal) {
+        freteValor = opcaoSelObj.preco;
+      } else if (gratis) {
+        freteValor = 0;
+      } else if (cotando) {
+        freteValor = null;
+      } else if (estatico && !estatico.aCombinar) {
+        /* fallback: usa tabela apenas se nao houver tentativa remota em andamento */
+        freteValor = estatico.gratis ? 0 : estatico.valor;
+      } else {
+        freteValor = null;
+      }
       const total = (preco && freteValor != null) ? preco + freteValor : null;
-      const cepIncompleto = cep.replace(/\D/g, "").length === 8 && !estatico && !temOpcoes;
+      const cepIncompleto = cep.replace(/\D/g, "").length === 8 && !estatico && !temOpcoes && !cotando;
       const esgotado = !!produto.esgotado;
       const overlayProps = useOverlayClose(onClose);
 
@@ -798,6 +826,11 @@
       const [cep, setCep] = React.useState(() => {
         try { return localStorage.getItem("spacetek_cep") || ""; } catch (e) { return ""; }
       });
+      const [opcoes, setOpcoes] = React.useState(null);
+      const [opcaoSel, setOpcaoSel] = React.useState(null);
+      const [cotando, setCotando] = React.useState(false);
+      const [cotacaoErro, setCotacaoErro] = React.useState(false);
+      const cepTimer = React.useRef(null);
 
       React.useEffect(() => {
         const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -811,12 +844,91 @@
         try { localStorage.setItem("spacetek_cep", cep); } catch (e) { /* ignora */ }
       }, [cep]);
 
-      const onCep = (v) => setCep(formatCep(v));
+      const endpoint = (window.FRETE_CONFIG || {}).endpoint || "";
+
+      const cotarRemoto = React.useCallback(async (cepDigits) => {
+        if (!endpoint || items.length === 0) return;
+        /* se algum item nao tem medidas, endpoint nao deve ser usado como padrao */
+        if (items.some((i) => !temMedidasFrete(i))) {
+          setOpcoes(null);
+          setOpcaoSel(null);
+          setCotacaoErro(true);
+          return;
+        }
+        const hasSemPreco = items.some((i) => !precoDe(i));
+        if (hasSemPreco) {
+          setOpcoes(null);
+          setOpcaoSel(null);
+          return;
+        }
+        setCotando(true);
+        setCotacaoErro(false);
+        const res = await cotarFreteRemoto(cepDigits, items);
+        setCotando(false);
+        if (res && res.opcoes && res.opcoes.length) {
+          setOpcoes(res.opcoes);
+          setOpcaoSel(res.opcoes[0].id);
+        } else {
+          setOpcoes(null);
+          setOpcaoSel(null);
+          /* erro real so quando todos tem medidas */
+          setCotacaoErro(items.every((i) => temMedidasFrete(i)));
+        }
+      }, [endpoint, items]);
+
+      /* Cotacao pelo endpoint ao abrir a sacola e sempre que os itens ou o
+         endpoint mudarem (o FRETE_CONFIG pode carregar depois da abertura). */
+      React.useEffect(() => {
+        if (!open) return;
+        const digits = cep.replace(/\D/g, "");
+        if (digits.length === 8) {
+          if (cepTimer.current) clearTimeout(cepTimer.current);
+          cotarRemoto(digits);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [open, endpoint, items]);
+
+      const onCep = (v) => {
+        const fmt = formatCep(v);
+        setCep(fmt);
+        setOpcoes(null);
+        setOpcaoSel(null);
+        setCotacaoErro(false);
+        if (cepTimer.current) clearTimeout(cepTimer.current);
+        const digits = fmt.replace(/\D/g, "");
+        if (digits.length === 8) {
+          cepTimer.current = setTimeout(() => cotarRemoto(digits), 450);
+        }
+      };
 
       const totalItens = items.reduce((s, i) => s + i.qtd, 0);
       const semPreco = items.some((i) => !precoDe(i));
       const subtotal = items.reduce((s, i) => s + (precoDe(i) ? precoDe(i) * i.qtd : 0), 0);
-      const frete = calcularFrete(cep, items, subtotal);
+      const estatico = calcularFrete(cep, items, subtotal);
+      const gratis = !!(estatico && estatico.gratis);
+      const temSemMedidas = !!(estatico && estatico.aCombinar);
+      /* Prioriza o endpoint: a tabela so entra como reserva depois que a
+         cotacao remota falhar (ou quando nao houver endpoint/medidas). */
+      const podeReal = !!endpoint && !!opcoes && opcoes.length > 0 && !gratis && !temSemMedidas && !semPreco;
+      const opcaoSelObj = podeReal ? (opcoes.find((o) => o.id === opcaoSel) || opcoes[0]) : null;
+      /* Valor exibido: opcao real quando disponivel; senao tabela como reserva.
+         Enquanto cotando e sem opcoes, nao exibe valor (evita o flash da tabela). */
+      let frete = null;
+      let tabelaReserva = false;
+      if (podeReal) {
+        frete = { valor: opcaoSelObj.preco, prazo: opcaoSelObj.prazo, transportadora: opcaoSelObj.empresa,
+          servico: opcaoSelObj.servico, real: true, estimado: !!opcaoSelObj.estimado, regiao: estatico && estatico.regiao };
+      } else if (gratis) {
+        frete = estatico;
+      } else if (cotando) {
+        frete = null;
+      } else if (estatico && !estatico.aCombinar) {
+        frete = estatico;
+        /* reserva da tabela com endpoint configurado: rotula como estimado */
+        tabelaReserva = !!endpoint;
+      } else if (estatico && estatico.aCombinar) {
+        frete = estatico;
+      }
       const freteValor = frete && !frete.aCombinar ? (frete.gratis ? 0 : frete.valor) : null;
       const total = subtotal + (freteValor || 0);
 
@@ -860,8 +972,24 @@
                 h("input", { value: cep, placeholder: "00000-000", inputMode: "numeric",
                   onChange: (e) => onCep(e.target.value) })
               ),
-              h("div", { className: "resumo__linha" }, h("span", null, "Frete"),
-                h("strong", null, freteTexto(frete))),
+              cotando && h("p", { className: "frete-opcoes__status" }, "Calculando op\u00e7\u00f5es de frete..."),
+              gratis && h("p", { className: "frete-opcoes__status frete-opcoes__status--ok" }, "Frete gr\u00e1tis para este pedido."),
+              podeReal && h("div", { className: "frete-opcoes" },
+                h("p", { className: "frete-opcoes__titulo" }, "Escolha o frete:"),
+                opcoes.map((o) => h("label", { key: o.id, className: "frete-opcao" + (opcaoSelObj && opcaoSelObj.id === o.id ? " frete-opcao--sel" : "") },
+                  h("input", { type: "radio", name: "frete-cart", checked: !!(opcaoSelObj && opcaoSelObj.id === o.id),
+                    onChange: () => setOpcaoSel(o.id) }),
+                  h("span", { className: "frete-opcao__nome" },
+                    [o.empresa, o.servico].filter(Boolean).join(" \u2022 ") || "Frete",
+                    o.estimado ? h("em", { className: "frete-opcao__nota" }, " (estimado pela tabela)") : null),
+                  h("span", { className: "frete-opcao__preco" }, formatBRL(o.preco) + (o.prazo != null ? " \u2022 " + o.prazo + " dias" : ""))
+                ))
+              ),
+              cotacaoErro && h("p", { className: "frete-opcoes__status" }, "N\u00e3o foi poss\u00edvel cotar agora; usando valor estimado."),
+              frete && !cotando && h("div", { className: "resumo__linha" }, h("span", null, "Frete"),
+                h("strong", null,
+                  freteTexto(frete),
+                  tabelaReserva ? h("em", { className: "frete-opcao__nota" }, " (estimado pela tabela)") : null)),
               h("div", { className: "resumo__linha resumo__linha--total" }, h("span", null, "Total"),
                 h("strong", null, semPreco ? "a combinar" : (freteValor == null ? formatBRL(subtotal) : formatBRL(total))))
             ),
